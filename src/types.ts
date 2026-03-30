@@ -1,8 +1,8 @@
 // Highlight colors
 export type HighlightColor = 'yellow' | 'red' | 'teal' | 'blue' | 'green';
 
-// A single highlight in the document
-export interface Highlight {
+// V1 (keep for migration compatibility)
+export interface HighlightV1 {
 	id: string;
 	line: number;
 	startOffset: number;
@@ -11,6 +11,32 @@ export interface Highlight {
 	color: HighlightColor;
 	createdAt: number;
 	resolved: boolean;
+}
+
+// V2 (new schema)
+export interface Highlight {
+	id: string;
+	// Position (multi-line ready)
+	startLine: number;
+	endLine: number;
+	startOffset: number;
+	endOffset: number;
+	// Anchor for recovery
+	anchor: {
+		exact: string;       // highlighted text
+		prefix: string;      // 32 chars before
+		suffix: string;      // 32 chars after
+	};
+	position: {
+		start: number;       // char offset from content body start (after frontmatter)
+		end: number;
+	};
+	// Meta (keep from V1)
+	text: string;          // keep for display compatibility
+	color: HighlightColor;
+	createdAt: number;
+	resolved: boolean;
+	orphaned?: boolean;    // true if anchor text no longer found
 }
 
 // A reply to a comment
@@ -35,6 +61,7 @@ export interface Comment {
 
 // The complete shadow file structure
 export interface CommentsFile {
+	version: string;       // "2.0" for V2, missing or "1.0" for V1
 	highlights: Highlight[];
 	comments: Comment[];
 }
