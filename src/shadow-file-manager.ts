@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, TFile, Notice } from 'obsidian';
 import {
 	CommentsFile,
 	Highlight,
@@ -62,7 +62,17 @@ export class ShadowFileManager {
 			const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
 			if (shadowFile instanceof TFile && shadowFile.extension === 'json') {
 				const content = await this.app.vault.read(shadowFile);
-				const rawData = JSON.parse(content);
+
+				let rawData: any;
+				try {
+					rawData = JSON.parse(content);
+				} catch (e) {
+					new Notice(`[Comments] Failed to parse ${shadowPath}. File may be corrupted.`);
+					console.error('[Comments] Failed to parse shadow file:', e);
+					const empty: CommentsFile = { version: '2.0', highlights: [], comments: [] };
+					this.cache.set(shadowPath, empty);
+					return empty;
+				}
 
 				let data: CommentsFile;
 				if (!rawData.version || rawData.version === '1.0') {
@@ -294,5 +304,29 @@ export class ShadowFileManager {
 
 	clearCache(): void {
 		this.cache.clear();
+	}
+
+	async renameShadowFile(oldNotePath: string, newNotePath: string): Promise<void> {
+		const oldShadowPath = oldNotePath.replace(/\.md$/, '.comments.json');
+		const newShadowPath = newNotePath.replace(/\.md$/, '.comments.json');
+
+		const oldFile = this.app.vault.getAbstractFileByPath(oldShadowPath);
+		if (oldFile instanceof TFile) {
+			await this.app.fileManager.renameFile(oldFile, newShadowPath);
+			const cached = this.cache.get(oldShadowPath);
+			if (cached) {
+				this.cache.delete(oldShadowPath);
+				this.cache.set(newShadowPath, cached);
+			}
+		}
+	}
+
+	async deleteShadowFile(notePath: string): Promise<void> {
+		const shadowPath = notePath.replace(/\.md$/, '.comments.json');
+		const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
+		if (shadowFile instanceof TFile) {
+			await this.app.vault.delete(shadowFile);
+			this.cache.delete(shadowPath);
+		}
 	}
 }

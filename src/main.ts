@@ -10,6 +10,7 @@ export default class CommentsPlugin extends Plugin {
 	settings: PluginSettings;
 	shadowManager: ShadowFileManager;
 	highlightRenderer: HighlightRenderer;
+	private _cacheRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -35,6 +36,32 @@ export default class CommentsPlugin extends Plugin {
 				await this.addHighlight(editor);
 			}
 		});
+
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (file.path.endsWith('.comments.json')) {
+					this.shadowManager.invalidateCache(file.path);
+					if (this._cacheRefreshTimer) clearTimeout(this._cacheRefreshTimer);
+					this._cacheRefreshTimer = setTimeout(() => this.refreshView(), 500);
+				}
+			})
+		);
+
+		this.registerEvent(
+			this.app.vault.on('rename', async (file, oldPath) => {
+				if (file.path.endsWith('.md')) {
+					await this.shadowManager.renameShadowFile(oldPath, file.path);
+				}
+			})
+		);
+
+		this.registerEvent(
+			this.app.vault.on('delete', async (file) => {
+				if (file.path.endsWith('.md')) {
+					await this.shadowManager.deleteShadowFile(file.path);
+				}
+			})
+		);
 
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', async () => {
