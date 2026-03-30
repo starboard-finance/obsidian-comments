@@ -87,6 +87,86 @@ function generateId() {
   return Math.random().toString(36).substring(2, 10);
 }
 
+// src/anchor.ts
+function findAnchorPosition(doc2, anchor, storedPosition) {
+  const { exact, prefix, suffix } = anchor;
+  if (!exact) return null;
+  if (storedPosition) {
+    const slice = doc2.substring(storedPosition.start, storedPosition.end);
+    if (slice === exact) {
+      return { from: storedPosition.start, to: storedPosition.end };
+    }
+  }
+  let searchStart = 0;
+  while (true) {
+    const idx = doc2.indexOf(exact, searchStart);
+    if (idx === -1) break;
+    const suffixOk = suffix ? contextMatches(
+      doc2.substring(idx + exact.length, idx + exact.length + suffix.length),
+      suffix,
+      0.5
+    ) : true;
+    if (prefix) {
+      const actualPrefix = doc2.substring(Math.max(0, idx - prefix.length), idx);
+      if (contextMatches(actualPrefix, prefix, 0.5) && suffixOk) {
+        return { from: idx, to: idx + exact.length };
+      }
+    } else if (suffixOk) {
+      return { from: idx, to: idx + exact.length };
+    }
+    searchStart = idx + 1;
+  }
+  return fuzzyFind(doc2, exact);
+}
+function contextMatches(actual, expected, threshold) {
+  if (!expected) return true;
+  const shorter = Math.min(actual.length, expected.length);
+  if (shorter === 0) return true;
+  const compare2 = actual.slice(-shorter);
+  let matches = 0;
+  for (let i = 0; i < shorter; i++) {
+    if (compare2[i] === expected[expected.length - shorter + i]) matches++;
+  }
+  return matches / shorter >= threshold;
+}
+function fuzzyFind(doc2, exact) {
+  if (exact.length < 4) return null;
+  const maxDist = Math.floor(exact.length * 0.2);
+  let best = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i <= doc2.length - exact.length; i++) {
+    const slice = doc2.substring(i, i + exact.length);
+    const dist2 = levenshtein(slice, exact);
+    if (dist2 <= maxDist && dist2 < bestDist) {
+      bestDist = dist2;
+      best = { from: i, to: i + exact.length };
+      if (dist2 === 0) return best;
+    }
+  }
+  return best;
+}
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from(
+    { length: m + 1 },
+    (_, i) => Array.from({ length: n + 1 }, (_2, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+function extractAnchor(doc2, from, to) {
+  return {
+    exact: doc2.substring(from, to),
+    prefix: doc2.substring(Math.max(0, from - 32), from),
+    suffix: doc2.substring(to, Math.min(doc2.length, to + 32))
+  };
+}
+
 // src/shadow-file-manager.ts
 function migrateV1ToV2(data) {
   const highlights = (data.highlights || []).map((h) => ({
@@ -167,6 +247,11 @@ var ShadowFileManager = class {
   }
   async createHighlight(file, highlightInput) {
     const data = await this.readShadowFile(file);
+    const derivedAnchor = highlightInput.documentText && (!highlightInput.anchorPrefix || !highlightInput.anchorSuffix) ? extractAnchor(
+      highlightInput.documentText,
+      highlightInput.positionStart,
+      highlightInput.positionEnd
+    ) : null;
     const highlight = {
       id: generateId(),
       startLine: highlightInput.startLine,
@@ -175,8 +260,8 @@ var ShadowFileManager = class {
       endOffset: highlightInput.endOffset,
       anchor: {
         exact: highlightInput.text,
-        prefix: highlightInput.anchorPrefix,
-        suffix: highlightInput.anchorSuffix
+        prefix: highlightInput.anchorPrefix ?? derivedAnchor?.prefix ?? "",
+        suffix: highlightInput.anchorSuffix ?? derivedAnchor?.suffix ?? ""
       },
       position: {
         start: highlightInput.positionStart,
@@ -11873,24 +11958,6 @@ var HighlightRenderer = class {
     if (!editorView) return null;
     return { view, editor, editorView, file };
   }
-  getAbsoluteRange(editor, doc2, highlight) {
-    const contentOffset = this.getContentOffset(doc2);
-    const startLinePos = editor.posToOffset?.({ line: highlight.startLine, ch: 0 });
-    const endLinePos = editor.posToOffset?.({ line: highlight.endLine, ch: 0 });
-    if (typeof startLinePos !== "number" || typeof endLinePos !== "number") {
-      if (typeof highlight.position?.start === "number" && typeof highlight.position?.end === "number") {
-        return {
-          from: contentOffset + highlight.position.start,
-          to: contentOffset + highlight.position.end
-        };
-      }
-      return null;
-    }
-    const from = startLinePos + highlight.startOffset;
-    const to = endLinePos + highlight.endOffset;
-    if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return null;
-    return { from, to };
-  }
   /**
    * Render highlights for the currently active file
    */
@@ -11899,19 +11966,40 @@ var HighlightRenderer = class {
     if (!ctx) return;
     this.clearDecorations();
     const data = await this.shadowManager.readShadowFile(ctx.file);
-    const doc2 = ctx.editor.getValue?.() ?? "";
+    const fullDoc = ctx.editorView.state.doc.toString();
+    const contentOffset = this.getContentOffset(fullDoc);
+    const doc2 = fullDoc.slice(contentOffset);
     const effects = [];
+    let didMutate = false;
     for (const highlight of data.highlights) {
-      const range = this.getAbsoluteRange(ctx.editor, doc2, highlight);
-      if (!range) continue;
+      const recovered = findAnchorPosition(doc2, highlight.anchor, highlight.position);
+      if (!recovered) {
+        if (!highlight.orphaned) {
+          highlight.orphaned = true;
+          didMutate = true;
+        }
+        continue;
+      }
+      if (highlight.orphaned) {
+        highlight.orphaned = false;
+        didMutate = true;
+      }
+      if (highlight.position.start !== recovered.from || highlight.position.end !== recovered.to) {
+        highlight.position.start = recovered.from;
+        highlight.position.end = recovered.to;
+        didMutate = true;
+      }
       effects.push(
         addHighlightEffect.of({
-          from: range.from,
-          to: range.to,
+          from: contentOffset + recovered.from,
+          to: contentOffset + recovered.to,
           id: highlight.id,
           color: highlight.color
         })
       );
+    }
+    if (didMutate) {
+      await this.shadowManager.writeShadowFile(ctx.file, data);
     }
     if (effects.length > 0) {
       ctx.editorView.dispatch({ effects });
@@ -11965,8 +12053,7 @@ var HighlightRenderer = class {
     const contentBody = doc2.slice(contentOffset);
     const localStart = Math.max(0, from - contentOffset);
     const localEnd = Math.max(localStart, to - contentOffset);
-    const anchorPrefix = contentBody.slice(Math.max(0, localStart - 32), localStart);
-    const anchorSuffix = contentBody.slice(localEnd, Math.min(contentBody.length, localEnd + 32));
+    const anchor = extractAnchor(contentBody, localStart, localEnd);
     const highlight = await this.shadowManager.createHighlight(
       ctx.file,
       {
@@ -11978,8 +12065,9 @@ var HighlightRenderer = class {
         color,
         positionStart: localStart,
         positionEnd: localEnd,
-        anchorPrefix,
-        anchorSuffix
+        anchorPrefix: anchor.prefix,
+        anchorSuffix: anchor.suffix,
+        documentText: contentBody
       }
     );
     if (ctx.editorView.state.field(highlightField, false)) {

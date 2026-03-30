@@ -8,6 +8,7 @@ import {
 	highlightField,
 	removeHighlightEffect,
 } from './cm6-highlight-field';
+import { extractAnchor, findAnchorPosition } from './anchor';
 
 export class HighlightRenderer {
 	app: App;
@@ -45,31 +46,6 @@ export class HighlightRenderer {
 		return { view, editor, editorView, file };
 	}
 
-	private getAbsoluteRange(editor: any, doc: string, highlight: Highlight): { from: number; to: number } | null {
-		const contentOffset = this.getContentOffset(doc);
-		const startLinePos = editor.posToOffset?.({ line: highlight.startLine, ch: 0 });
-		const endLinePos = editor.posToOffset?.({ line: highlight.endLine, ch: 0 });
-
-		if (typeof startLinePos !== 'number' || typeof endLinePos !== 'number') {
-			if (
-				typeof highlight.position?.start === 'number' &&
-				typeof highlight.position?.end === 'number'
-			) {
-				return {
-					from: contentOffset + highlight.position.start,
-					to: contentOffset + highlight.position.end,
-				};
-			}
-			return null;
-		}
-
-		const from = startLinePos + highlight.startOffset;
-		const to = endLinePos + highlight.endOffset;
-
-		if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return null;
-		return { from, to };
-	}
-
 	/**
 	 * Render highlights for the currently active file
 	 */
@@ -80,21 +56,48 @@ export class HighlightRenderer {
 		this.clearDecorations();
 
 		const data = await this.shadowManager.readShadowFile(ctx.file);
-		const doc = ctx.editor.getValue?.() ?? '';
+		const fullDoc = ctx.editorView.state.doc.toString();
+		const contentOffset = this.getContentOffset(fullDoc);
+		const doc = fullDoc.slice(contentOffset);
 
 		const effects = [];
+		let didMutate = false;
 
 		for (const highlight of data.highlights) {
-			const range = this.getAbsoluteRange(ctx.editor, doc, highlight);
-			if (!range) continue;
+			const recovered = findAnchorPosition(doc, highlight.anchor, highlight.position);
+			if (!recovered) {
+				if (!highlight.orphaned) {
+					highlight.orphaned = true;
+					didMutate = true;
+				}
+				continue;
+			}
+
+			if (highlight.orphaned) {
+				highlight.orphaned = false;
+				didMutate = true;
+			}
+			if (
+				highlight.position.start !== recovered.from ||
+				highlight.position.end !== recovered.to
+			) {
+				highlight.position.start = recovered.from;
+				highlight.position.end = recovered.to;
+				didMutate = true;
+			}
+
 			effects.push(
 				addHighlightEffect.of({
-					from: range.from,
-					to: range.to,
+					from: contentOffset + recovered.from,
+					to: contentOffset + recovered.to,
 					id: highlight.id,
 					color: highlight.color,
 				})
 			);
+		}
+
+		if (didMutate) {
+			await this.shadowManager.writeShadowFile(ctx.file, data);
 		}
 
 		if (effects.length > 0) {
@@ -163,8 +166,7 @@ export class HighlightRenderer {
 		const contentBody = doc.slice(contentOffset);
 		const localStart = Math.max(0, from - contentOffset);
 		const localEnd = Math.max(localStart, to - contentOffset);
-		const anchorPrefix = contentBody.slice(Math.max(0, localStart - 32), localStart);
-		const anchorSuffix = contentBody.slice(localEnd, Math.min(contentBody.length, localEnd + 32));
+		const anchor = extractAnchor(contentBody, localStart, localEnd);
 
 		const highlight = await this.shadowManager.createHighlight(
 			ctx.file,
@@ -177,8 +179,9 @@ export class HighlightRenderer {
 				color,
 				positionStart: localStart,
 				positionEnd: localEnd,
-				anchorPrefix,
-				anchorSuffix,
+				anchorPrefix: anchor.prefix,
+				anchorSuffix: anchor.suffix,
+				documentText: contentBody,
 			}
 		);
 

@@ -8,6 +8,7 @@ import {
 	generateId,
 	HighlightColor,
 } from './types';
+import { extractAnchor } from './anchor';
 
 export function migrateV1ToV2(data: any): CommentsFile {
 	const highlights = (data.highlights || []).map((h: HighlightV1) => ({
@@ -102,20 +103,30 @@ export class ShadowFileManager {
 
 	async createHighlight(
 		file: TFile,
-		highlightInput: {
-			startLine: number;
-			endLine: number;
-			startOffset: number;
-			endOffset: number;
-			text: string;
-			color: HighlightColor;
-			positionStart: number;
-			positionEnd: number;
-			anchorPrefix: string;
-			anchorSuffix: string;
-		}
-	): Promise<Highlight> {
+			highlightInput: {
+				startLine: number;
+				endLine: number;
+				startOffset: number;
+				endOffset: number;
+				text: string;
+				color: HighlightColor;
+				positionStart: number;
+				positionEnd: number;
+				anchorPrefix?: string;
+				anchorSuffix?: string;
+				documentText?: string;
+			}
+		): Promise<Highlight> {
 		const data = await this.readShadowFile(file);
+		const derivedAnchor =
+			highlightInput.documentText &&
+			(!highlightInput.anchorPrefix || !highlightInput.anchorSuffix)
+				? extractAnchor(
+						highlightInput.documentText,
+						highlightInput.positionStart,
+						highlightInput.positionEnd
+				  )
+				: null;
 		const highlight: Highlight = {
 			id: generateId(),
 			startLine: highlightInput.startLine,
@@ -124,8 +135,8 @@ export class ShadowFileManager {
 			endOffset: highlightInput.endOffset,
 			anchor: {
 				exact: highlightInput.text,
-				prefix: highlightInput.anchorPrefix,
-				suffix: highlightInput.anchorSuffix,
+				prefix: highlightInput.anchorPrefix ?? derivedAnchor?.prefix ?? '',
+				suffix: highlightInput.anchorSuffix ?? derivedAnchor?.suffix ?? '',
 			},
 			position: {
 				start: highlightInput.positionStart,
