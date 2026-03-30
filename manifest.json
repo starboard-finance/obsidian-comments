@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-comments",
+	"name": "Comments",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Google Docs-style comment system with inline highlights for Obsidian",
+	"author": "Starboard",
+	"isDesktopOnly": false,
+	"css": "styles.css"
+}
