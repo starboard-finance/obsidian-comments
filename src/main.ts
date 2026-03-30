@@ -4,6 +4,7 @@ import { ShadowFileManager } from './shadow-file-manager';
 import { HighlightRenderer } from './highlight-renderer';
 import { CommentsItemView, COMMENTS_VIEW_TYPE } from './comments-item-view';
 import { PluginSettings, DEFAULT_SETTINGS, HighlightColor } from './types';
+import { highlightField } from './cm6-highlight-field';
 
 export default class CommentsPlugin extends Plugin {
 	settings: PluginSettings;
@@ -14,6 +15,7 @@ export default class CommentsPlugin extends Plugin {
 		await this.loadSettings();
 		this.shadowManager = new ShadowFileManager(this.app);
 		this.highlightRenderer = new HighlightRenderer(this.app, this.shadowManager);
+		this.registerEditorExtension([highlightField]);
 
 		this.registerView(
 			COMMENTS_VIEW_TYPE,

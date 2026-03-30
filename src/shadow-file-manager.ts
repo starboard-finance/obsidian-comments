@@ -102,30 +102,37 @@ export class ShadowFileManager {
 
 	async createHighlight(
 		file: TFile,
-		line: number,
-		startOffset: number,
-		endOffset: number,
-		text: string,
-		color: HighlightColor
+		highlightInput: {
+			startLine: number;
+			endLine: number;
+			startOffset: number;
+			endOffset: number;
+			text: string;
+			color: HighlightColor;
+			positionStart: number;
+			positionEnd: number;
+			anchorPrefix: string;
+			anchorSuffix: string;
+		}
 	): Promise<Highlight> {
 		const data = await this.readShadowFile(file);
 		const highlight: Highlight = {
 			id: generateId(),
-			startLine: line,
-			endLine: line,
-			startOffset,
-			endOffset,
+			startLine: highlightInput.startLine,
+			endLine: highlightInput.endLine,
+			startOffset: highlightInput.startOffset,
+			endOffset: highlightInput.endOffset,
 			anchor: {
-				exact: text,
-				prefix: '',
-				suffix: '',
+				exact: highlightInput.text,
+				prefix: highlightInput.anchorPrefix,
+				suffix: highlightInput.anchorSuffix,
 			},
 			position: {
-				start: 0,
-				end: 0,
+				start: highlightInput.positionStart,
+				end: highlightInput.positionEnd,
 			},
-			text,
-			color,
+			text: highlightInput.text,
+			color: highlightInput.color,
 			createdAt: Date.now(),
 			resolved: false,
 		};

@@ -310,32 +310,31 @@
 	background: var(--background-modifier-border-hover);
 }
 
-/* Highlight in Editor */
-.cm-highlight {
+.obsidian-comments-highlight {
 	border-radius: 2px;
 }
 
 .obsidian-comments-highlight-yellow {
-	background-color: rgba(255, 215, 0, 0.25) !important;
-	border-bottom: 2px solid #ffd700 !important;
+	background-color: rgba(255, 215, 0, 0.3) !important;
+	border-bottom: 2px solid #ffd700;
 }
 
 .obsidian-comments-highlight-red {
-	background-color: rgba(255, 107, 107, 0.25) !important;
-	border-bottom: 2px solid #ff6b6b !important;
+	background-color: rgba(255, 107, 107, 0.3) !important;
+	border-bottom: 2px solid #ff6b6b;
 }
 
 .obsidian-comments-highlight-teal {
-	background-color: rgba(78, 205, 196, 0.25) !important;
-	border-bottom: 2px solid #4ecdc4 !important;
+	background-color: rgba(78, 205, 196, 0.3) !important;
+	border-bottom: 2px solid #4ecdc4;
 }
 
 .obsidian-comments-highlight-blue {
-	background-color: rgba(69, 183, 209, 0.25) !important;
-	border-bottom: 2px solid #45b7d1 !important;
+	background-color: rgba(69, 183, 209, 0.3) !important;
+	border-bottom: 2px solid #45b7d1;
 }
 
 .obsidian-comments-highlight-green {
-	background-color: rgba(150, 206, 180, 0.25) !important;
-	border-bottom: 2px solid #96ceb4 !important;
+	background-color: rgba(150, 206, 180, 0.3) !important;
+	border-bottom: 2px solid #96ceb4;
 }
