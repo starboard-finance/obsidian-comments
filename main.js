@@ -11807,6 +11807,22 @@ var highlightField = StateField.define({
   },
   update(decorations2, tr) {
     decorations2 = decorations2.map(tr.changes);
+    const collapsedHighlightIds = /* @__PURE__ */ new Set();
+    decorations2.between(0, tr.newDoc.length, (from, to, deco) => {
+      if (from !== to) return;
+      const id = deco.spec.attributes?.["data-highlight-id"];
+      if (typeof id === "string" && id.length > 0) {
+        collapsedHighlightIds.add(id);
+      }
+    });
+    if (collapsedHighlightIds.size > 0) {
+      decorations2 = decorations2.update({
+        filter: (_from, _to, deco) => {
+          const id = deco.spec.attributes?.["data-highlight-id"];
+          return typeof id !== "string" || !collapsedHighlightIds.has(id);
+        }
+      });
+    }
     for (const effect of tr.effects) {
       if (effect.is(addHighlightEffect)) {
         const { from, to, id, color } = effect.value;
