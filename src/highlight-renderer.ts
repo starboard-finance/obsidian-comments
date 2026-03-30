@@ -146,26 +146,27 @@ export class HighlightRenderer {
 
 		const editor = ctx.editor;
 		const selection = editor.getSelection?.();
-
 		if (!selection) return null;
 
 		const fromCursor = editor.getCursor?.('from');
 		const toCursor = editor.getCursor?.('to');
 		if (!fromCursor || !toCursor) return null;
 
-		const from = editor.posToOffset?.(fromCursor);
-		const to = editor.posToOffset?.(toCursor);
-		if (typeof from !== 'number' || typeof to !== 'number' || to <= from) return null;
+		// CM6 doc.line() is 1-indexed; Obsidian cursors are 0-indexed — add 1 to convert.
+		const { editorView } = ctx;
+		const fromLine = editorView.state.doc.line(fromCursor.line + 1);
+		const toLine = editorView.state.doc.line(toCursor.line + 1);
+		const fromOffset = fromLine.from + fromCursor.ch;
+		const toOffset = toLine.from + toCursor.ch;
 
-		const startLineStart = editor.posToOffset?.({ line: fromCursor.line, ch: 0 });
-		const endLineStart = editor.posToOffset?.({ line: toCursor.line, ch: 0 });
-		if (typeof startLineStart !== 'number' || typeof endLineStart !== 'number') return null;
+		if (toOffset <= fromOffset) return null;
 
-		const doc = editor.getValue?.() ?? '';
-		const contentOffset = this.getContentOffset(doc);
-		const contentBody = doc.slice(contentOffset);
-		const localStart = Math.max(0, from - contentOffset);
-		const localEnd = Math.max(localStart, to - contentOffset);
+		const docText = editorView.state.doc.toString();
+		const contentOffset = this.getContentOffset(docText);
+		const contentBody = docText.slice(contentOffset);
+		const localStart = Math.max(0, fromOffset - contentOffset);
+		const localEnd = Math.max(localStart, toOffset - contentOffset);
+
 		const anchor = extractAnchor(contentBody, localStart, localEnd);
 
 		const highlight = await this.shadowManager.createHighlight(
@@ -173,8 +174,8 @@ export class HighlightRenderer {
 			{
 				startLine: fromCursor.line,
 				endLine: toCursor.line,
-				startOffset: from - startLineStart,
-				endOffset: to - endLineStart,
+				startOffset: fromCursor.ch,
+				endOffset: toCursor.ch,
 				text: selection,
 				color,
 				positionStart: localStart,
@@ -185,11 +186,11 @@ export class HighlightRenderer {
 			}
 		);
 
-		if (ctx.editorView.state.field(highlightField, false)) {
-			ctx.editorView.dispatch({
+		if (editorView.state.field(highlightField, false)) {
+			editorView.dispatch({
 				effects: addHighlightEffect.of({
-					from,
-					to,
+					from: fromOffset,
+					to: toOffset,
 					id: highlight.id,
 					color: highlight.color,
 				}),
