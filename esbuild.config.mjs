@@ -7,7 +7,7 @@ await esbuild.build({
   target: 'es2020',
   format: 'cjs',
   outfile: 'main.js',
-  external: ['obsidian'],
+  external: ['obsidian', '@codemirror/state', '@codemirror/view', '@codemirror/language'],
   loader: {
     '.ts': 'ts'
   },
