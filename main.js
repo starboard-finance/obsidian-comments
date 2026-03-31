@@ -12462,6 +12462,8 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
   constructor(leaf, shadowManager, settings, highlightRenderer, onRefresh) {
     super(leaf);
     this.sidebarView = null;
+    this.currentFile = null;
+    this.unresolvedCount = 0;
     this.shadowManager = shadowManager;
     this.settings = settings;
     this.highlightRenderer = highlightRenderer;
@@ -12471,6 +12473,9 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
     return COMMENTS_VIEW_TYPE;
   }
   getDisplayText() {
+    if (this.unresolvedCount > 0) {
+      return `Comments (${this.unresolvedCount})`;
+    }
     return "Comments";
   }
   getIcon() {
@@ -12525,6 +12530,9 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
       const file = mdLeaf ? mdLeaf.view.file : null;
       if (file && this.sidebarView) {
         await this.sidebarView.loadForFile(file);
+        this.currentFile = file;
+        await this.updateUnresolvedCount();
+        this.leaf.updateHeader?.();
       }
     }, 50);
   }
@@ -12532,13 +12540,26 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
     this.sidebarView = null;
   }
   async loadForFile(file) {
+    this.currentFile = file;
     if (this.sidebarView) {
       await this.sidebarView.loadForFile(file);
     }
+    await this.updateUnresolvedCount();
+    this.leaf.updateHeader?.();
   }
   async refresh() {
     if (this.sidebarView) {
       await this.sidebarView.refresh();
+      await this.updateUnresolvedCount();
+      this.leaf.updateHeader?.();
+    }
+  }
+  async updateUnresolvedCount() {
+    if (this.currentFile) {
+      const data = await this.shadowManager.readShadowFile(this.currentFile);
+      this.unresolvedCount = data.highlights.filter((h) => !h.resolved).length;
+    } else {
+      this.unresolvedCount = 0;
     }
   }
   scrollToHighlightInRange(from, to) {
@@ -12575,16 +12596,30 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
     );
     this.addRibbonIcon("message-square", "Comments", () => this.activateView());
     this.addSettingTab(new CommentsSettingsTab(this.app, this));
-    this.addCommand({ id: "toggle-comments-sidebar", name: "Toggle comments sidebar", callback: () => this.activateView() });
+    this.addCommand({
+      id: "toggle-comments-sidebar",
+      name: "Toggle comments sidebar",
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "C" }],
+      callback: () => this.activateView()
+    });
     this.addCommand({
       id: "add-highlight",
       name: "Add highlight",
+      hotkeys: [{ modifiers: ["Mod", "Shift"], key: "H" }],
       editorCallback: async (editor) => {
         if (!editor.getSelection()) {
           new import_obsidian5.Notice("Select text first");
           return;
         }
         await this.addHighlight(editor);
+      }
+    });
+    this.addCommand({
+      id: "navigate-next-comment",
+      name: "Navigate to next comment",
+      hotkeys: [{ modifiers: ["Mod"], key: "]" }],
+      editorCallback: (editor) => {
+        this.navigateToNextComment(editor);
       }
     });
     this.registerEvent(
@@ -12683,6 +12718,23 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
     if (!view || !view.file) return;
     await this.highlightRenderer.addHighlightFromSelection(color || this.settings.defaultColor);
     await this.refreshView();
+  }
+  async navigateToNextComment(editor) {
+    const mdView = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
+    if (!mdView?.file) return;
+    const data = await this.shadowManager.readShadowFile(mdView.file);
+    const unresolved = data.highlights.filter((h) => !h.resolved);
+    if (unresolved.length === 0) return;
+    const cursor = editor.getCursor();
+    const currentLine = cursor.line;
+    const next = unresolved.find((h) => h.startLine > currentLine) || unresolved[0];
+    if (next) {
+      editor.setCursor({ line: next.startLine, ch: next.startOffset });
+      editor.scrollIntoView({
+        from: { line: next.startLine, ch: next.startOffset },
+        to: { line: next.endLine, ch: next.endOffset }
+      });
+    }
   }
 };
 //# sourceMappingURL=main.js.map

@@ -13,6 +13,8 @@ export class CommentsItemView extends ItemView {
 	private highlightRenderer: HighlightRenderer;
 	private sidebarView: CommentsSidebarView | null = null;
 	private onRefresh: () => void;
+	private currentFile: TFile | null = null;
+	private unresolvedCount = 0;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -33,6 +35,9 @@ export class CommentsItemView extends ItemView {
 	}
 
 	getDisplayText(): string {
+		if (this.unresolvedCount > 0) {
+			return `Comments (${this.unresolvedCount})`;
+		}
 		return 'Comments';
 	}
 
@@ -94,6 +99,9 @@ export class CommentsItemView extends ItemView {
 			const file = mdLeaf ? (mdLeaf.view as any).file : null;
 			if (file && this.sidebarView) {
 				await this.sidebarView.loadForFile(file);
+				this.currentFile = file;
+				await this.updateUnresolvedCount();
+				this.leaf.updateHeader?.();
 			}
 		}, 50);
 	}
@@ -103,14 +111,28 @@ export class CommentsItemView extends ItemView {
 	}
 
 	async loadForFile(file: TFile): Promise<void> {
+		this.currentFile = file;
 		if (this.sidebarView) {
 			await this.sidebarView.loadForFile(file);
 		}
+		await this.updateUnresolvedCount();
+		this.leaf.updateHeader?.();
 	}
 
 	async refresh(): Promise<void> {
 		if (this.sidebarView) {
 			await this.sidebarView.refresh();
+			await this.updateUnresolvedCount();
+			this.leaf.updateHeader?.();
+		}
+	}
+
+	private async updateUnresolvedCount(): Promise<void> {
+		if (this.currentFile) {
+			const data = await this.shadowManager.readShadowFile(this.currentFile);
+			this.unresolvedCount = data.highlights.filter(h => !h.resolved).length;
+		} else {
+			this.unresolvedCount = 0;
 		}
 	}
 
