@@ -174,8 +174,15 @@ export default class CommentsPlugin extends Plugin {
 	async addHighlight(editor: any, color?: HighlightColor) {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view || !(view as any).file) return;
-		await this.highlightRenderer.addHighlightFromSelection(color || this.settings.defaultColor);
+		const highlight = await this.highlightRenderer.addHighlightFromSelection(color || this.settings.defaultColor);
+		await this.activateView();
 		await this.refreshView();
+		if (highlight) {
+			const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+			for (const leaf of leaves) {
+				(leaf.view as CommentsItemView).focusHighlightInput(highlight.id);
+			}
+		}
 	}
 
 	private async navigateToNextComment(editor: any): Promise<void> {

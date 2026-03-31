@@ -713,7 +713,8 @@ var CommentsSidebarView = class {
         cls: "orphaned-indicator"
       });
     }
-    const highlightText = item.createEl("div", { cls: "highlight-text" });
+    const headerRow = item.createEl("div", { cls: "highlight-header-row" });
+    const highlightText = headerRow.createEl("div", { cls: "highlight-text" });
     highlightText.createEl("span", {
       text: "\u2261 ",
       cls: "highlight-indicator",
@@ -726,20 +727,10 @@ var CommentsSidebarView = class {
     highlightText.addEventListener("click", () => {
       this.onHighlightClick(highlight);
     });
-    if (comments.length > 0 || !isResolved) {
-      const commentsContainer = item.createEl("div", { cls: "highlight-comments" });
-      for (const comment of comments) {
-        this.renderComment(commentsContainer, highlight, comment);
-      }
-      if (!isResolved) {
-        this.renderCommentInput(commentsContainer, highlight);
-      }
-    }
-    const actions = item.createEl("div", { cls: "highlight-actions" });
     if (!isResolved) {
-      const resolveBtn = actions.createEl("button", {
+      const resolveBtn = headerRow.createEl("button", {
         text: "\u2713",
-        cls: "action-btn resolve-btn",
+        cls: "resolve-btn-inline",
         attr: { title: "Resolve" }
       });
       resolveBtn.addEventListener("click", async (e) => {
@@ -757,7 +748,38 @@ var CommentsSidebarView = class {
           console.error("[Comments] Error resolving highlight:", err);
         }
       });
+    } else {
+      const unresolveBtn = headerRow.createEl("button", {
+        text: "\u21A9",
+        cls: "resolve-btn-inline",
+        attr: { title: "Unresolve" }
+      });
+      unresolveBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try {
+          await this.shadowManager.setHighlightResolved(
+            this.currentFile,
+            highlight.id,
+            false
+          );
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to unresolve highlight. Please try again.");
+          console.error("[Comments] Error unresolving highlight:", err);
+        }
+      });
     }
+    if (comments.length > 0 || !isResolved) {
+      const commentsContainer = item.createEl("div", { cls: "highlight-comments" });
+      for (const comment of comments) {
+        this.renderComment(commentsContainer, highlight, comment);
+      }
+      if (!isResolved) {
+        this.renderCommentInput(commentsContainer, highlight);
+      }
+    }
+    const actions = item.createEl("div", { cls: "highlight-actions" });
     const deleteBtn = actions.createEl("button", {
       text: "\u{1F5D1}",
       cls: "action-btn delete-btn",
@@ -880,27 +902,34 @@ var CommentsSidebarView = class {
   }
   renderCommentInput(container, highlight) {
     const inputContainer = container.createEl("div", { cls: "comment-input-container" });
-    const input = inputContainer.createEl("input", {
+    const inputRow = inputContainer.createEl("div", { cls: "comment-input-row" });
+    const input = inputRow.createEl("input", {
       cls: "comment-input",
       attr: { type: "text", placeholder: "Add a comment..." }
     });
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && input.value.trim()) {
-        const user = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
-        try {
-          await this.shadowManager.addComment(
-            this.currentFile,
-            highlight.id,
-            user,
-            input.value.trim()
-          );
-          await this.refresh();
-          this.refreshCallback();
-        } catch (err) {
-          new import_obsidian4.Notice("[Comments] Failed to add comment. Please try again.");
-          console.error("[Comments] Error adding comment:", err);
-        }
+    const submitBtn = inputRow.createEl("button", {
+      text: "\u2713",
+      cls: "comment-submit-btn",
+      attr: { title: "Submit comment" }
+    });
+    const submit = async () => {
+      if (!input.value.trim()) return;
+      const user = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
+      try {
+        await this.shadowManager.addComment(this.currentFile, highlight.id, user, input.value.trim());
+        await this.refresh();
+        this.refreshCallback();
+      } catch (err) {
+        new import_obsidian4.Notice("[Comments] Failed to add comment. Please try again.");
+        console.error("[Comments] Error adding comment:", err);
       }
+    };
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") await submit();
+    });
+    submitBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await submit();
     });
     input.addEventListener("click", (e) => e.stopPropagation());
   }
@@ -908,30 +937,41 @@ var CommentsSidebarView = class {
     const existingInput = container.querySelector(".reply-input-container");
     if (existingInput) existingInput.remove();
     const inputContainer = container.createEl("div", { cls: "reply-input-container" });
-    const input = inputContainer.createEl("input", {
+    const inputRow = inputContainer.createEl("div", { cls: "reply-input-row" });
+    const input = inputRow.createEl("input", {
       cls: "reply-input",
       attr: { type: "text", placeholder: "Write a reply..." }
     });
     input.focus();
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && input.value.trim()) {
-        const user = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
-        try {
-          await this.shadowManager.addReply(
-            this.currentFile,
-            comment.id,
-            user,
-            input.value.trim()
-          );
-          await this.refresh();
-          this.refreshCallback();
-        } catch (err) {
-          new import_obsidian4.Notice("[Comments] Failed to add reply. Please try again.");
-          console.error("[Comments] Error adding reply:", err);
-        }
-      } else if (e.key === "Escape") {
-        inputContainer.remove();
+    const submitBtn = inputRow.createEl("button", {
+      text: "\u2713",
+      cls: "comment-submit-btn",
+      attr: { title: "Submit reply" }
+    });
+    const submit = async () => {
+      if (!input.value.trim()) return;
+      const user = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
+      try {
+        await this.shadowManager.addReply(
+          this.currentFile,
+          comment.id,
+          user,
+          input.value.trim()
+        );
+        await this.refresh();
+        this.refreshCallback();
+      } catch (err) {
+        new import_obsidian4.Notice("[Comments] Failed to add reply. Please try again.");
+        console.error("[Comments] Error adding reply:", err);
       }
+    };
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") await submit();
+      else if (e.key === "Escape") inputContainer.remove();
+    });
+    submitBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await submit();
     });
     input.addEventListener("click", (e) => e.stopPropagation());
   }
@@ -939,29 +979,40 @@ var CommentsSidebarView = class {
     const existingInput = container.querySelector(".edit-input-container");
     if (existingInput) existingInput.remove();
     const inputContainer = container.createEl("div", { cls: "edit-input-container" });
-    const input = inputContainer.createEl("input", {
+    const inputRow = inputContainer.createEl("div", { cls: "edit-input-row" });
+    const input = inputRow.createEl("input", {
       cls: "edit-input",
       attr: { type: "text", value: comment.content }
     });
     input.focus();
     input.select();
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && input.value.trim()) {
-        try {
-          await this.shadowManager.editComment(
-            this.currentFile,
-            comment.id,
-            input.value.trim()
-          );
-          await this.refresh();
-          this.refreshCallback();
-        } catch (err) {
-          new import_obsidian4.Notice("[Comments] Failed to save edit. Please try again.");
-          console.error("[Comments] Error editing comment:", err);
-        }
-      } else if (e.key === "Escape") {
-        inputContainer.remove();
+    const submitBtn = inputRow.createEl("button", {
+      text: "\u2713",
+      cls: "comment-submit-btn",
+      attr: { title: "Save edit" }
+    });
+    const submit = async () => {
+      if (!input.value.trim()) return;
+      try {
+        await this.shadowManager.editComment(
+          this.currentFile,
+          comment.id,
+          input.value.trim()
+        );
+        await this.refresh();
+        this.refreshCallback();
+      } catch (err) {
+        new import_obsidian4.Notice("[Comments] Failed to save edit. Please try again.");
+        console.error("[Comments] Error editing comment:", err);
       }
+    };
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") await submit();
+      else if (e.key === "Escape") inputContainer.remove();
+    });
+    submitBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await submit();
     });
     input.addEventListener("click", (e) => e.stopPropagation());
   }
@@ -969,30 +1020,41 @@ var CommentsSidebarView = class {
     const existingInput = container.querySelector(".edit-input-container");
     if (existingInput) existingInput.remove();
     const inputContainer = container.createEl("div", { cls: "edit-input-container" });
-    const input = inputContainer.createEl("input", {
+    const inputRow = inputContainer.createEl("div", { cls: "edit-input-row" });
+    const input = inputRow.createEl("input", {
       cls: "edit-input",
       attr: { type: "text", value: reply.content }
     });
     input.focus();
     input.select();
-    input.addEventListener("keydown", async (e) => {
-      if (e.key === "Enter" && input.value.trim()) {
-        try {
-          await this.shadowManager.editReply(
-            this.currentFile,
-            commentId,
-            reply.id,
-            input.value.trim()
-          );
-          await this.refresh();
-          this.refreshCallback();
-        } catch (err) {
-          new import_obsidian4.Notice("[Comments] Failed to save edit. Please try again.");
-          console.error("[Comments] Error editing reply:", err);
-        }
-      } else if (e.key === "Escape") {
-        inputContainer.remove();
+    const submitBtn = inputRow.createEl("button", {
+      text: "\u2713",
+      cls: "comment-submit-btn",
+      attr: { title: "Save edit" }
+    });
+    const submit = async () => {
+      if (!input.value.trim()) return;
+      try {
+        await this.shadowManager.editReply(
+          this.currentFile,
+          commentId,
+          reply.id,
+          input.value.trim()
+        );
+        await this.refresh();
+        this.refreshCallback();
+      } catch (err) {
+        new import_obsidian4.Notice("[Comments] Failed to save edit. Please try again.");
+        console.error("[Comments] Error editing reply:", err);
       }
+    };
+    input.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") await submit();
+      else if (e.key === "Escape") inputContainer.remove();
+    });
+    submitBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await submit();
     });
     input.addEventListener("click", (e) => e.stopPropagation());
   }
@@ -1004,6 +1066,14 @@ var CommentsSidebarView = class {
         item.scrollIntoView({ behavior: "smooth", block: "nearest" });
         break;
       }
+    }
+  }
+  focusHighlightInput(highlightId) {
+    const item = this.containerEl.querySelector(`[data-highlight-id="${highlightId}"]`);
+    if (item) {
+      item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      const input = item.querySelector(".comment-input");
+      if (input) setTimeout(() => input.focus(), 100);
     }
   }
   truncateText(text, maxLength) {
@@ -1061,7 +1131,7 @@ var CommentsItemView = class extends import_obsidian5.ItemView {
       () => this.onRefresh(),
       (highlight) => {
         const mdView = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
-        if (mdView && highlight.position) {
+        if (mdView && highlight.position && !(highlight.position.start === 0 && highlight.position.end === 0)) {
           const editor = mdView.editor;
           const editorView = editor?.cm;
           if (editorView) {
@@ -1140,6 +1210,11 @@ var CommentsItemView = class extends import_obsidian5.ItemView {
   scrollToHighlightInRange(from, to) {
     if (this.sidebarView) {
       this.sidebarView.scrollToHighlightInRange(from, to);
+    }
+  }
+  focusHighlightInput(highlightId) {
+    if (this.sidebarView) {
+      this.sidebarView.focusHighlightInput(highlightId);
     }
   }
 };
@@ -1298,8 +1373,15 @@ var CommentsPlugin = class extends import_obsidian6.Plugin {
   async addHighlight(editor, color) {
     const view = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!view || !view.file) return;
-    await this.highlightRenderer.addHighlightFromSelection(color || this.settings.defaultColor);
+    const highlight = await this.highlightRenderer.addHighlightFromSelection(color || this.settings.defaultColor);
+    await this.activateView();
     await this.refreshView();
+    if (highlight) {
+      const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+      for (const leaf of leaves) {
+        leaf.view.focusHighlightInput(highlight.id);
+      }
+    }
   }
   async navigateToNextComment(editor) {
     const mdView = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);

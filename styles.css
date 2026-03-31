@@ -415,3 +415,46 @@
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
+
+.highlight-header-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 4px;
+}
+.highlight-header-row .highlight-text { flex: 1; }
+
+.resolve-btn-inline {
+	flex-shrink: 0;
+	background: transparent;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 4px 8px;
+	cursor: pointer;
+	font-size: 12px;
+	margin-top: 8px;
+	margin-right: 8px;
+}
+.resolve-btn-inline:hover {
+	border-color: var(--color-green);
+	color: var(--color-green);
+}
+
+.comment-input-row, .reply-input-row, .edit-input-row {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+.comment-input-row input, .reply-input-row input, .edit-input-row input { flex: 1; }
+
+.comment-submit-btn {
+	flex-shrink: 0;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border: none;
+	border-radius: 4px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: bold;
+}
+.comment-submit-btn:hover { opacity: 0.9; }

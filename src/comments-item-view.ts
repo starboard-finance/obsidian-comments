@@ -58,7 +58,7 @@ export class CommentsItemView extends ItemView {
 			() => this.onRefresh(),
 			(highlight: Highlight) => {
 				const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (mdView && highlight.position) {
+				if (mdView && highlight.position && !(highlight.position.start === 0 && highlight.position.end === 0)) {
 					const editor = mdView.editor as any;
 					const editorView = editor?.cm as EditorView | undefined;
 					if (editorView) {
@@ -146,6 +146,12 @@ export class CommentsItemView extends ItemView {
 	scrollToHighlightInRange(from: number, to: number): void {
 		if (this.sidebarView) {
 			this.sidebarView.scrollToHighlightInRange(from, to);
+		}
+	}
+
+	focusHighlightInput(highlightId: string): void {
+		if (this.sidebarView) {
+			this.sidebarView.focusHighlightInput(highlightId);
 		}
 	}
 }
