@@ -31,7 +31,7 @@ export default class CommentsPlugin extends Plugin {
 
 		this.registerView(
 			COMMENTS_VIEW_TYPE,
-			(leaf) => new CommentsItemView(leaf, this.shadowManager, this.settings, this.highlightRenderer, () => this.refreshView())
+			(leaf) => new CommentsItemView(leaf, this.shadowManager, this.settings, this.highlightRenderer, () => { this.refreshView(); this.saveSettings(); })
 		);
 
 		this.addRibbonIcon('message-square', 'Comments', () => this.activateView());

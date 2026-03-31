@@ -399,3 +399,19 @@
 	gap: 2px;
 	margin-left: auto;
 }
+
+/* Resolved toggle button in sidebar header */
+.comments-toggle-resolved-btn {
+	background: transparent;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 2px 8px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	cursor: pointer;
+	margin-left: auto;
+}
+.comments-toggle-resolved-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}

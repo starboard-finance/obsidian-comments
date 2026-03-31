@@ -56,6 +56,16 @@ export class CommentsSidebarView {
 		const header = this.containerEl.createEl('div', { cls: 'comments-header' });
 		header.createEl('h3', { text: 'Comments' });
 
+		const toggleBtn = header.createEl('button', {
+			text: this.settings.showResolved ? 'Hide resolved' : 'Show resolved',
+			cls: 'comments-toggle-resolved-btn',
+		});
+		toggleBtn.addEventListener('click', async () => {
+			this.settings.showResolved = !this.settings.showResolved;
+			await this.render();
+			this.refreshCallback();
+		});
+
 		// Filter resolved
 		const unresolvedHighlights = data.highlights.filter((h) => !h.resolved);
 		const resolvedHighlights = data.highlights.filter((h) => h.resolved);
@@ -224,7 +234,8 @@ export class CommentsSidebarView {
 		});
 
 		// Edit/Delete buttons (only for own comments)
-		if (comment.user === this.settings.username) {
+		const currentUser = this.settings.username?.trim() || 'Anonymous';
+		if (comment.user === currentUser) {
 			const btnGroup = header.createEl('div', { cls: 'comment-btn-group' });
 
 			const editBtn = btnGroup.createEl('button', {
@@ -296,7 +307,8 @@ export class CommentsSidebarView {
 		});
 
 		// Edit/Delete buttons
-		if (reply.user === this.settings.username) {
+		const currentReplyUser = this.settings.username?.trim() || 'Anonymous';
+		if (reply.user === currentReplyUser) {
 			const btnGroup = header.createEl('div', { cls: 'comment-btn-group' });
 
 			const editBtn = btnGroup.createEl('button', {
@@ -348,15 +360,12 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				if (!this.settings.username?.trim()) {
-					new Notice('[Comments] Please set your username in Settings → Comments before commenting.');
-					return;
-				}
+				const user = this.settings.username?.trim() || 'Anonymous';
 				try {
 					await this.shadowManager.addComment(
 						this.currentFile!,
 						highlight.id,
-						this.settings.username,
+						user,
 						input.value.trim()
 					);
 					await this.refresh();
@@ -386,15 +395,12 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				if (!this.settings.username?.trim()) {
-					new Notice('[Comments] Please set your username in Settings → Comments before replying.');
-					return;
-				}
+				const user = this.settings.username?.trim() || 'Anonymous';
 				try {
 					await this.shadowManager.addReply(
 						this.currentFile!,
 						comment.id,
-						this.settings.username,
+						user,
 						input.value.trim()
 					);
 					await this.refresh();

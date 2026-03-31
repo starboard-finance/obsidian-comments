@@ -59,7 +59,7 @@ var CommentsSettingsTab = class extends import_obsidian.PluginSettingTab {
       toggle.onChange(async (value) => {
         settings.showResolved = value;
         await this.plugin.saveSettings();
-        this.plugin.refreshSidebar?.();
+        this.plugin.refreshView?.();
       });
     });
   }
@@ -652,6 +652,15 @@ var CommentsSidebarView = class {
     this.containerEl.empty();
     const header = this.containerEl.createEl("div", { cls: "comments-header" });
     header.createEl("h3", { text: "Comments" });
+    const toggleBtn = header.createEl("button", {
+      text: this.settings.showResolved ? "Hide resolved" : "Show resolved",
+      cls: "comments-toggle-resolved-btn"
+    });
+    toggleBtn.addEventListener("click", async () => {
+      this.settings.showResolved = !this.settings.showResolved;
+      await this.render();
+      this.refreshCallback();
+    });
     const unresolvedHighlights = data.highlights.filter((h) => !h.resolved);
     const resolvedHighlights = data.highlights.filter((h) => h.resolved);
     if (data.highlights.length === 0) {
@@ -773,7 +782,8 @@ var CommentsSidebarView = class {
       text: `\u{1F464} ${comment.user} \xB7 ${this.formatTime(comment.createdAt)}`,
       cls: "comment-meta"
     });
-    if (comment.user === this.settings.username) {
+    const currentUser = this.settings.username?.trim() || "Anonymous";
+    if (comment.user === currentUser) {
       const btnGroup = header.createEl("div", { cls: "comment-btn-group" });
       const editBtn = btnGroup.createEl("button", {
         text: "\u270F\uFE0F",
@@ -829,7 +839,8 @@ var CommentsSidebarView = class {
       text: `  \u2514\u2500 \u{1F464} ${reply.user} \xB7 ${this.formatTime(reply.createdAt)}`,
       cls: "reply-meta"
     });
-    if (reply.user === this.settings.username) {
+    const currentReplyUser = this.settings.username?.trim() || "Anonymous";
+    if (reply.user === currentReplyUser) {
       const btnGroup = header.createEl("div", { cls: "comment-btn-group" });
       const editBtn = btnGroup.createEl("button", {
         text: "\u270F\uFE0F",
@@ -875,15 +886,12 @@ var CommentsSidebarView = class {
     });
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        if (!this.settings.username?.trim()) {
-          new import_obsidian4.Notice("[Comments] Please set your username in Settings \u2192 Comments before commenting.");
-          return;
-        }
+        const user = this.settings.username?.trim() || "Anonymous";
         try {
           await this.shadowManager.addComment(
             this.currentFile,
             highlight.id,
-            this.settings.username,
+            user,
             input.value.trim()
           );
           await this.refresh();
@@ -907,15 +915,12 @@ var CommentsSidebarView = class {
     input.focus();
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        if (!this.settings.username?.trim()) {
-          new import_obsidian4.Notice("[Comments] Please set your username in Settings \u2192 Comments before replying.");
-          return;
-        }
+        const user = this.settings.username?.trim() || "Anonymous";
         try {
           await this.shadowManager.addReply(
             this.currentFile,
             comment.id,
-            this.settings.username,
+            user,
             input.value.trim()
           );
           await this.refresh();
@@ -1162,7 +1167,10 @@ var CommentsPlugin = class extends import_obsidian6.Plugin {
     this.registerEditorExtension([highlightField, scrollListener]);
     this.registerView(
       COMMENTS_VIEW_TYPE,
-      (leaf) => new CommentsItemView(leaf, this.shadowManager, this.settings, this.highlightRenderer, () => this.refreshView())
+      (leaf) => new CommentsItemView(leaf, this.shadowManager, this.settings, this.highlightRenderer, () => {
+        this.refreshView();
+        this.saveSettings();
+      })
     );
     this.addRibbonIcon("message-square", "Comments", () => this.activateView());
     this.addSettingTab(new CommentsSettingsTab(this.app, this));

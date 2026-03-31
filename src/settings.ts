@@ -54,8 +54,8 @@ export class CommentsSettingsTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					settings.showResolved = value;
 					await (this.plugin as any).saveSettings();
-					// Refresh sidebar if open
-					(this.plugin as any).refreshSidebar?.();
+				// Refresh sidebar if open
+				(this.plugin as any).refreshView?.();
 				});
 			});
 	}
