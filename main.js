@@ -23,7 +23,7 @@ __export(main_exports, {
   default: () => CommentsPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // node_modules/@marijn/find-cluster-break/src/index.js
 var rangeFrom = [];
@@ -12115,9 +12115,10 @@ var HighlightRenderer = class {
 };
 
 // src/comments-item-view.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian5 = require("obsidian");
 
 // src/sidebar-view.ts
+var import_obsidian4 = require("obsidian");
 var CommentsSidebarView = class {
   constructor(app, shadowManager, settings, containerEl, refreshCallback, onHighlightClick) {
     this.currentFile = null;
@@ -12169,6 +12170,11 @@ var CommentsSidebarView = class {
         data,
         true
       );
+    } else if (resolvedHighlights.length > 0 && !this.settings.showResolved) {
+      this.containerEl.createEl("p", {
+        text: `${resolvedHighlights.length} resolved highlight${resolvedHighlights.length !== 1 ? "s" : ""} hidden`,
+        cls: "comments-resolved-note"
+      });
     }
   }
   renderHighlightsSection(title, highlights, data, isResolved) {
@@ -12185,14 +12191,20 @@ var CommentsSidebarView = class {
   renderHighlightItem(container, highlight, data, isResolved) {
     const comments = data.comments.filter((c) => c.highlightId === highlight.id);
     const item = container.createEl("div", {
-      cls: `highlight-item highlight-color-${highlight.color}${isResolved ? " resolved" : ""}`,
+      cls: `highlight-item highlight-color-${highlight.color}${isResolved ? " resolved" : ""}${highlight.orphaned ? " orphaned" : ""}`,
       attr: {
         "data-highlight-id": highlight.id,
         "data-position-start": String(highlight.position?.start ?? 0)
       }
     });
+    if (highlight.orphaned) {
+      item.createEl("div", {
+        text: "\u26A0 Anchor text not found \u2014 highlight may have moved or been deleted",
+        cls: "orphaned-indicator"
+      });
+    }
     const highlightText = item.createEl("div", { cls: "highlight-text" });
-    const highlightLabel = highlightText.createEl("span", {
+    highlightText.createEl("span", {
       text: "\u2261 ",
       cls: "highlight-indicator",
       attr: { style: `color: ${COLOR_HEX[highlight.color]}` }
@@ -12222,13 +12234,18 @@ var CommentsSidebarView = class {
       });
       resolveBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.shadowManager.setHighlightResolved(
-          this.currentFile,
-          highlight.id,
-          true
-        );
-        await this.refresh();
-        this.refreshCallback();
+        try {
+          await this.shadowManager.setHighlightResolved(
+            this.currentFile,
+            highlight.id,
+            true
+          );
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to resolve highlight. Please try again.");
+          console.error("[Comments] Error resolving highlight:", err);
+        }
       });
     }
     const deleteBtn = actions.createEl("button", {
@@ -12238,9 +12255,14 @@ var CommentsSidebarView = class {
     });
     deleteBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      await this.shadowManager.deleteHighlight(this.currentFile, highlight.id);
-      await this.refresh();
-      this.refreshCallback();
+      try {
+        await this.shadowManager.deleteHighlight(this.currentFile, highlight.id);
+        await this.refresh();
+        this.refreshCallback();
+      } catch (err) {
+        new import_obsidian4.Notice("[Comments] Failed to delete highlight. Please try again.");
+        console.error("[Comments] Error deleting highlight:", err);
+      }
     });
   }
   renderComment(container, highlight, comment) {
@@ -12251,7 +12273,8 @@ var CommentsSidebarView = class {
       cls: "comment-meta"
     });
     if (comment.user === this.settings.username) {
-      const editBtn = header.createEl("button", {
+      const btnGroup = header.createEl("div", { cls: "comment-btn-group" });
+      const editBtn = btnGroup.createEl("button", {
         text: "\u270F\uFE0F",
         cls: "comment-action-btn",
         attr: { title: "Edit" }
@@ -12260,16 +12283,21 @@ var CommentsSidebarView = class {
         e.stopPropagation();
         this.showEditCommentInput(commentEl, comment);
       });
-      const deleteBtn = header.createEl("button", {
+      const deleteBtn = btnGroup.createEl("button", {
         text: "\u{1F5D1}",
         cls: "comment-action-btn",
         attr: { title: "Delete" }
       });
       deleteBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.shadowManager.deleteComment(this.currentFile, comment.id);
-        await this.refresh();
-        this.refreshCallback();
+        try {
+          await this.shadowManager.deleteComment(this.currentFile, comment.id);
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to delete comment. Please try again.");
+          console.error("[Comments] Error deleting comment:", err);
+        }
       });
     }
     const content = commentEl.createEl("div", { cls: "comment-content" });
@@ -12301,7 +12329,8 @@ var CommentsSidebarView = class {
       cls: "reply-meta"
     });
     if (reply.user === this.settings.username) {
-      const editBtn = header.createEl("button", {
+      const btnGroup = header.createEl("div", { cls: "comment-btn-group" });
+      const editBtn = btnGroup.createEl("button", {
         text: "\u270F\uFE0F",
         cls: "comment-action-btn",
         attr: { title: "Edit" }
@@ -12310,16 +12339,21 @@ var CommentsSidebarView = class {
         e.stopPropagation();
         this.showEditReplyInput(replyEl.parentElement, comment.id, reply);
       });
-      const deleteBtn = header.createEl("button", {
+      const deleteBtn = btnGroup.createEl("button", {
         text: "\u{1F5D1}",
         cls: "comment-action-btn",
         attr: { title: "Delete" }
       });
       deleteBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        await this.shadowManager.deleteReply(this.currentFile, comment.id, reply.id);
-        await this.refresh();
-        this.refreshCallback();
+        try {
+          await this.shadowManager.deleteReply(this.currentFile, comment.id, reply.id);
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to delete reply. Please try again.");
+          console.error("[Comments] Error deleting reply:", err);
+        }
       });
     }
     const content = replyEl.createEl("div", { cls: "reply-content" });
@@ -12340,14 +12374,23 @@ var CommentsSidebarView = class {
     });
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        await this.shadowManager.addComment(
-          this.currentFile,
-          highlight.id,
-          this.settings.username,
-          input.value.trim()
-        );
-        await this.refresh();
-        this.refreshCallback();
+        if (!this.settings.username?.trim()) {
+          new import_obsidian4.Notice("[Comments] Please set your username in Settings \u2192 Comments before commenting.");
+          return;
+        }
+        try {
+          await this.shadowManager.addComment(
+            this.currentFile,
+            highlight.id,
+            this.settings.username,
+            input.value.trim()
+          );
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to add comment. Please try again.");
+          console.error("[Comments] Error adding comment:", err);
+        }
       }
     });
     input.addEventListener("click", (e) => e.stopPropagation());
@@ -12363,14 +12406,23 @@ var CommentsSidebarView = class {
     input.focus();
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        await this.shadowManager.addReply(
-          this.currentFile,
-          comment.id,
-          this.settings.username,
-          input.value.trim()
-        );
-        await this.refresh();
-        this.refreshCallback();
+        if (!this.settings.username?.trim()) {
+          new import_obsidian4.Notice("[Comments] Please set your username in Settings \u2192 Comments before replying.");
+          return;
+        }
+        try {
+          await this.shadowManager.addReply(
+            this.currentFile,
+            comment.id,
+            this.settings.username,
+            input.value.trim()
+          );
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to add reply. Please try again.");
+          console.error("[Comments] Error adding reply:", err);
+        }
       } else if (e.key === "Escape") {
         inputContainer.remove();
       }
@@ -12389,13 +12441,18 @@ var CommentsSidebarView = class {
     input.select();
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        await this.shadowManager.editComment(
-          this.currentFile,
-          comment.id,
-          input.value.trim()
-        );
-        await this.refresh();
-        this.refreshCallback();
+        try {
+          await this.shadowManager.editComment(
+            this.currentFile,
+            comment.id,
+            input.value.trim()
+          );
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to save edit. Please try again.");
+          console.error("[Comments] Error editing comment:", err);
+        }
       } else if (e.key === "Escape") {
         inputContainer.remove();
       }
@@ -12414,14 +12471,19 @@ var CommentsSidebarView = class {
     input.select();
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        await this.shadowManager.editReply(
-          this.currentFile,
-          commentId,
-          reply.id,
-          input.value.trim()
-        );
-        await this.refresh();
-        this.refreshCallback();
+        try {
+          await this.shadowManager.editReply(
+            this.currentFile,
+            commentId,
+            reply.id,
+            input.value.trim()
+          );
+          await this.refresh();
+          this.refreshCallback();
+        } catch (err) {
+          new import_obsidian4.Notice("[Comments] Failed to save edit. Please try again.");
+          console.error("[Comments] Error editing reply:", err);
+        }
       } else if (e.key === "Escape") {
         inputContainer.remove();
       }
@@ -12458,12 +12520,13 @@ var CommentsSidebarView = class {
 
 // src/comments-item-view.ts
 var COMMENTS_VIEW_TYPE = "obsidian-comments-view";
-var CommentsItemView = class extends import_obsidian4.ItemView {
+var CommentsItemView = class extends import_obsidian5.ItemView {
   constructor(leaf, shadowManager, settings, highlightRenderer, onRefresh) {
     super(leaf);
     this.sidebarView = null;
     this.currentFile = null;
     this.unresolvedCount = 0;
+    this._refreshTimer = null;
     this.shadowManager = shadowManager;
     this.settings = settings;
     this.highlightRenderer = highlightRenderer;
@@ -12491,7 +12554,7 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
       this.contentEl,
       () => this.onRefresh(),
       (highlight) => {
-        const mdView = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+        const mdView = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
         if (mdView && highlight.position) {
           const editor = mdView.editor;
           const editorView = editor?.cm;
@@ -12548,11 +12611,17 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
     this.leaf.updateHeader?.();
   }
   async refresh() {
-    if (this.sidebarView) {
-      await this.sidebarView.refresh();
-      await this.updateUnresolvedCount();
-      this.leaf.updateHeader?.();
-    }
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    return new Promise((resolve) => {
+      this._refreshTimer = setTimeout(async () => {
+        if (this.sidebarView) {
+          await this.sidebarView.refresh();
+          await this.updateUnresolvedCount();
+          this.leaf.updateHeader?.();
+        }
+        resolve();
+      }, 300);
+    });
   }
   async updateUnresolvedCount() {
     if (this.currentFile) {
@@ -12570,7 +12639,7 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
 };
 
 // src/main.ts
-var CommentsPlugin = class extends import_obsidian5.Plugin {
+var CommentsPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this._cacheRefreshTimer = null;
@@ -12608,7 +12677,7 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
       hotkeys: [{ modifiers: ["Mod", "Shift"], key: "H" }],
       editorCallback: async (editor) => {
         if (!editor.getSelection()) {
-          new import_obsidian5.Notice("Select text first");
+          new import_obsidian6.Notice("Select text first");
           return;
         }
         await this.addHighlight(editor);
@@ -12647,7 +12716,7 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", async () => {
-        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
         if (activeView?.file) {
           await this.updateViewForFile(activeView.file);
           this.highlightRenderer.renderHighlightsForActiveFile();
@@ -12714,13 +12783,13 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
     }
   }
   async addHighlight(editor, color) {
-    const view = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!view || !view.file) return;
     await this.highlightRenderer.addHighlightFromSelection(color || this.settings.defaultColor);
     await this.refreshView();
   }
   async navigateToNextComment(editor) {
-    const mdView = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
+    const mdView = this.app.workspace.getActiveViewOfType(import_obsidian6.MarkdownView);
     if (!mdView?.file) return;
     const data = await this.shadowManager.readShadowFile(mdView.file);
     const unresolved = data.highlights.filter((h) => !h.resolved);
