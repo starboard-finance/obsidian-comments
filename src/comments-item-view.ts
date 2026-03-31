@@ -15,6 +15,7 @@ export class CommentsItemView extends ItemView {
 	private onRefresh: () => void;
 	private currentFile: TFile | null = null;
 	private unresolvedCount = 0;
+	private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -120,11 +121,17 @@ export class CommentsItemView extends ItemView {
 	}
 
 	async refresh(): Promise<void> {
-		if (this.sidebarView) {
-			await this.sidebarView.refresh();
-			await this.updateUnresolvedCount();
-			this.leaf.updateHeader?.();
-		}
+		if (this._refreshTimer) clearTimeout(this._refreshTimer);
+		return new Promise((resolve) => {
+			this._refreshTimer = setTimeout(async () => {
+				if (this.sidebarView) {
+					await this.sidebarView.refresh();
+					await this.updateUnresolvedCount();
+					this.leaf.updateHeader?.();
+				}
+				resolve();
+			}, 300);
+		});
 	}
 
 	private async updateUnresolvedCount(): Promise<void> {

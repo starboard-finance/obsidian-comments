@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import { ShadowFileManager } from './shadow-file-manager';
 import { CommentsFile, Highlight, Comment, PluginSettings, COLOR_HEX } from './types';
 
@@ -81,6 +81,11 @@ export class CommentsSidebarView {
 				data,
 				true
 			);
+		} else if (resolvedHighlights.length > 0 && !this.settings.showResolved) {
+			this.containerEl.createEl('p', {
+				text: `${resolvedHighlights.length} resolved highlight${resolvedHighlights.length !== 1 ? 's' : ''} hidden`,
+				cls: 'comments-resolved-note',
+			});
 		}
 	}
 
@@ -113,16 +118,24 @@ export class CommentsSidebarView {
 		const comments = data.comments.filter((c) => c.highlightId === highlight.id);
 
 		const item = container.createEl('div', {
-			cls: `highlight-item highlight-color-${highlight.color}${isResolved ? ' resolved' : ''}`,
+			cls: `highlight-item highlight-color-${highlight.color}${isResolved ? ' resolved' : ''}${(highlight as any).orphaned ? ' orphaned' : ''}`,
 			attr: {
 				'data-highlight-id': highlight.id,
 				'data-position-start': String(highlight.position?.start ?? 0),
 			},
 		});
 
+		// Orphaned indicator
+		if ((highlight as any).orphaned) {
+			item.createEl('div', {
+				text: '⚠ Anchor text not found — highlight may have moved or been deleted',
+				cls: 'orphaned-indicator',
+			});
+		}
+
 		// Highlight text (clickable)
 		const highlightText = item.createEl('div', { cls: 'highlight-text' });
-		const highlightLabel = highlightText.createEl('span', {
+		highlightText.createEl('span', {
 			text: '≡ ',
 			cls: 'highlight-indicator',
 			attr: { style: `color: ${COLOR_HEX[highlight.color]}` },
@@ -162,13 +175,18 @@ export class CommentsSidebarView {
 			});
 			resolveBtn.addEventListener('click', async (e) => {
 				e.stopPropagation();
-				await this.shadowManager.setHighlightResolved(
-					this.currentFile!,
-					highlight.id,
-					true
-				);
-				await this.refresh();
-				this.refreshCallback();
+				try {
+					await this.shadowManager.setHighlightResolved(
+						this.currentFile!,
+						highlight.id,
+						true
+					);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to resolve highlight. Please try again.');
+					console.error('[Comments] Error resolving highlight:', err);
+				}
 			});
 		}
 
@@ -180,9 +198,14 @@ export class CommentsSidebarView {
 		});
 		deleteBtn.addEventListener('click', async (e) => {
 			e.stopPropagation();
-			await this.shadowManager.deleteHighlight(this.currentFile!, highlight.id);
-			await this.refresh();
-			this.refreshCallback();
+			try {
+				await this.shadowManager.deleteHighlight(this.currentFile!, highlight.id);
+				await this.refresh();
+				this.refreshCallback();
+			} catch (err) {
+				new Notice('[Comments] Failed to delete highlight. Please try again.');
+				console.error('[Comments] Error deleting highlight:', err);
+			}
 		});
 	}
 
@@ -202,7 +225,9 @@ export class CommentsSidebarView {
 
 		// Edit/Delete buttons (only for own comments)
 		if (comment.user === this.settings.username) {
-			const editBtn = header.createEl('button', {
+			const btnGroup = header.createEl('div', { cls: 'comment-btn-group' });
+
+			const editBtn = btnGroup.createEl('button', {
 				text: '✏️',
 				cls: 'comment-action-btn',
 				attr: { title: 'Edit' },
@@ -212,16 +237,21 @@ export class CommentsSidebarView {
 				this.showEditCommentInput(commentEl, comment);
 			});
 
-			const deleteBtn = header.createEl('button', {
+			const deleteBtn = btnGroup.createEl('button', {
 				text: '🗑',
 				cls: 'comment-action-btn',
 				attr: { title: 'Delete' },
 			});
 			deleteBtn.addEventListener('click', async (e) => {
 				e.stopPropagation();
-				await this.shadowManager.deleteComment(this.currentFile!, comment.id);
-				await this.refresh();
-				this.refreshCallback();
+				try {
+					await this.shadowManager.deleteComment(this.currentFile!, comment.id);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to delete comment. Please try again.');
+					console.error('[Comments] Error deleting comment:', err);
+				}
 			});
 		}
 
@@ -267,7 +297,9 @@ export class CommentsSidebarView {
 
 		// Edit/Delete buttons
 		if (reply.user === this.settings.username) {
-			const editBtn = header.createEl('button', {
+			const btnGroup = header.createEl('div', { cls: 'comment-btn-group' });
+
+			const editBtn = btnGroup.createEl('button', {
 				text: '✏️',
 				cls: 'comment-action-btn',
 				attr: { title: 'Edit' },
@@ -277,16 +309,21 @@ export class CommentsSidebarView {
 				this.showEditReplyInput(replyEl.parentElement!, comment.id, reply);
 			});
 
-			const deleteBtn = header.createEl('button', {
+			const deleteBtn = btnGroup.createEl('button', {
 				text: '🗑',
 				cls: 'comment-action-btn',
 				attr: { title: 'Delete' },
 			});
 			deleteBtn.addEventListener('click', async (e) => {
 				e.stopPropagation();
-				await this.shadowManager.deleteReply(this.currentFile!, comment.id, reply.id);
-				await this.refresh();
-				this.refreshCallback();
+				try {
+					await this.shadowManager.deleteReply(this.currentFile!, comment.id, reply.id);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to delete reply. Please try again.');
+					console.error('[Comments] Error deleting reply:', err);
+				}
 			});
 		}
 
@@ -311,14 +348,23 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				await this.shadowManager.addComment(
-					this.currentFile!,
-					highlight.id,
-					this.settings.username,
-					input.value.trim()
-				);
-				await this.refresh();
-				this.refreshCallback();
+				if (!this.settings.username?.trim()) {
+					new Notice('[Comments] Please set your username in Settings → Comments before commenting.');
+					return;
+				}
+				try {
+					await this.shadowManager.addComment(
+						this.currentFile!,
+						highlight.id,
+						this.settings.username,
+						input.value.trim()
+					);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to add comment. Please try again.');
+					console.error('[Comments] Error adding comment:', err);
+				}
 			}
 		});
 
@@ -340,14 +386,23 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				await this.shadowManager.addReply(
-					this.currentFile!,
-					comment.id,
-					this.settings.username,
-					input.value.trim()
-				);
-				await this.refresh();
-				this.refreshCallback();
+				if (!this.settings.username?.trim()) {
+					new Notice('[Comments] Please set your username in Settings → Comments before replying.');
+					return;
+				}
+				try {
+					await this.shadowManager.addReply(
+						this.currentFile!,
+						comment.id,
+						this.settings.username,
+						input.value.trim()
+					);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to add reply. Please try again.');
+					console.error('[Comments] Error adding reply:', err);
+				}
 			} else if (e.key === 'Escape') {
 				inputContainer.remove();
 			}
@@ -374,13 +429,18 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				await this.shadowManager.editComment(
-					this.currentFile!,
-					comment.id,
-					input.value.trim()
-				);
-				await this.refresh();
-				this.refreshCallback();
+				try {
+					await this.shadowManager.editComment(
+						this.currentFile!,
+						comment.id,
+						input.value.trim()
+					);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to save edit. Please try again.');
+					console.error('[Comments] Error editing comment:', err);
+				}
 			} else if (e.key === 'Escape') {
 				inputContainer.remove();
 			}
@@ -408,14 +468,19 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				await this.shadowManager.editReply(
-					this.currentFile!,
-					commentId,
-					reply.id,
-					input.value.trim()
-				);
-				await this.refresh();
-				this.refreshCallback();
+				try {
+					await this.shadowManager.editReply(
+						this.currentFile!,
+						commentId,
+						reply.id,
+						input.value.trim()
+					);
+					await this.refresh();
+					this.refreshCallback();
+				} catch (err) {
+					new Notice('[Comments] Failed to save edit. Please try again.');
+					console.error('[Comments] Error editing reply:', err);
+				}
 			} else if (e.key === 'Escape') {
 				inputContainer.remove();
 			}
