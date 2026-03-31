@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf, TFile, MarkdownView } from 'obsidian';
+import { EditorView } from '@codemirror/view';
 import { ShadowFileManager } from './shadow-file-manager';
 import { CommentsSidebarView } from './sidebar-view';
 import { PluginSettings, Highlight } from './types';
@@ -49,7 +50,37 @@ export class CommentsItemView extends ItemView {
 			this.settings,
 			this.contentEl,
 			() => this.onRefresh(),
-			(highlight: Highlight) => this.highlightRenderer.navigateToHighlight(highlight)
+			(highlight: Highlight) => {
+				const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (mdView && highlight.position) {
+					const editor = mdView.editor as any;
+					const editorView = editor?.cm as EditorView | undefined;
+					if (editorView) {
+						const docText = editorView.state.doc.toString();
+						let contentOffset = 0;
+						if (docText.startsWith('---\n')) {
+							const end = docText.indexOf('\n---\n', 4);
+							if (end !== -1) contentOffset = end + 5;
+						}
+						const absPos = contentOffset + highlight.position.start;
+
+						editorView.dispatch({
+							effects: EditorView.scrollIntoView(absPos, { y: 'center' }),
+						});
+
+						setTimeout(() => {
+							const marks = editorView.contentDOM.querySelectorAll(
+								`[data-highlight-id="${highlight.id}"]`
+							);
+							marks.forEach(el => {
+								el.classList.add('obsidian-comments-highlight-pulse');
+								setTimeout(() => el.classList.remove('obsidian-comments-highlight-pulse'), 1000);
+							});
+						}, 100);
+					}
+				}
+				this.highlightRenderer.navigateToHighlight(highlight);
+			}
 		);
 
 		this.contentEl.createEl('p', {
@@ -80,6 +111,12 @@ export class CommentsItemView extends ItemView {
 	async refresh(): Promise<void> {
 		if (this.sidebarView) {
 			await this.sidebarView.refresh();
+		}
+	}
+
+	scrollToHighlightInRange(from: number, to: number): void {
+		if (this.sidebarView) {
+			this.sidebarView.scrollToHighlightInRange(from, to);
 		}
 	}
 }

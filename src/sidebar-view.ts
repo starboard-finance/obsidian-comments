@@ -114,6 +114,10 @@ export class CommentsSidebarView {
 
 		const item = container.createEl('div', {
 			cls: `highlight-item highlight-color-${highlight.color}${isResolved ? ' resolved' : ''}`,
+			attr: {
+				'data-highlight-id': highlight.id,
+				'data-position-start': String(highlight.position?.start ?? 0),
+			},
 		});
 
 		// Highlight text (clickable)
@@ -418,6 +422,17 @@ export class CommentsSidebarView {
 		});
 
 		input.addEventListener('click', (e) => e.stopPropagation());
+	}
+
+	scrollToHighlightInRange(from: number, to: number): void {
+		const items = this.containerEl.querySelectorAll('[data-position-start]');
+		for (const item of items) {
+			const posStart = parseInt((item as HTMLElement).dataset.positionStart || '0');
+			if (posStart >= from && posStart <= to) {
+				item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+				break;
+			}
+		}
 	}
 
 	private truncateText(text: string, maxLength: number): string {

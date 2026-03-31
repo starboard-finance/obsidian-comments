@@ -1,4 +1,5 @@
 import { App, Plugin, WorkspaceLeaf, Notice, MarkdownView } from 'obsidian';
+import { EditorView, ViewUpdate } from '@codemirror/view';
 import { CommentsSettingsTab } from './settings';
 import { ShadowFileManager } from './shadow-file-manager';
 import { HighlightRenderer } from './highlight-renderer';
@@ -11,12 +12,22 @@ export default class CommentsPlugin extends Plugin {
 	shadowManager: ShadowFileManager;
 	highlightRenderer: HighlightRenderer;
 	private _cacheRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+	private _scrollSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async onload() {
 		await this.loadSettings();
 		this.shadowManager = new ShadowFileManager(this.app);
 		this.highlightRenderer = new HighlightRenderer(this.app, this.shadowManager);
-		this.registerEditorExtension([highlightField]);
+		const plugin = this;
+		const scrollListener = EditorView.updateListener.of((update: ViewUpdate) => {
+			if (update.viewportChanged) {
+				if (plugin._scrollSyncTimer) clearTimeout(plugin._scrollSyncTimer);
+				plugin._scrollSyncTimer = setTimeout(() => {
+					plugin.syncSidebarToViewport(update.view);
+				}, 200);
+			}
+		});
+		this.registerEditorExtension([highlightField, scrollListener]);
 
 		this.registerView(
 			COMMENTS_VIEW_TYPE,
@@ -80,6 +91,23 @@ export default class CommentsPlugin extends Plugin {
 				}
 			})
 		);
+	}
+
+	private syncSidebarToViewport(editorView: EditorView): void {
+		const { from, to } = editorView.viewport;
+		const docText = editorView.state.doc.toString();
+		let contentOffset = 0;
+		if (docText.startsWith('---\n')) {
+			const end = docText.indexOf('\n---\n', 4);
+			if (end !== -1) contentOffset = end + 5;
+		}
+		const contentFrom = Math.max(0, from - contentOffset);
+		const contentTo = Math.max(0, to - contentOffset);
+		const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+		for (const leaf of leaves) {
+			const commentsView = leaf.view as CommentsItemView;
+			commentsView.scrollToHighlightInRange?.(contentFrom, contentTo);
+		}
 	}
 
 	async onunload() {

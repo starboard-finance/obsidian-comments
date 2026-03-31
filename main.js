@@ -25,360 +25,6 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
 
-// src/settings.ts
-var import_obsidian = require("obsidian");
-var CommentsSettingsTab = class extends import_obsidian.PluginSettingTab {
-  constructor(app, plugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
-  display() {
-    const { containerEl } = this;
-    containerEl.empty();
-    const settings = this.plugin.settings;
-    new import_obsidian.Setting(containerEl).setName("Username").setDesc("Your name for comment attribution").addText(
-      (text) => text.setPlaceholder("Enter your name").setValue(settings.username).onChange(async (value) => {
-        settings.username = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName("Default highlight color").setDesc("Color for new highlights").addDropdown((dropdown) => {
-      const colors = ["yellow", "red", "teal", "blue", "green"];
-      colors.forEach((color) => {
-        dropdown.addOption(color, this.capitalizeFirst(color));
-      });
-      dropdown.setValue(settings.defaultColor);
-      dropdown.onChange(async (value) => {
-        settings.defaultColor = value;
-        await this.plugin.saveSettings();
-      });
-    });
-    new import_obsidian.Setting(containerEl).setName("Show resolved comments").setDesc("Display resolved comments in the sidebar").addToggle((toggle) => {
-      toggle.setValue(settings.showResolved);
-      toggle.onChange(async (value) => {
-        settings.showResolved = value;
-        await this.plugin.saveSettings();
-        this.plugin.refreshSidebar?.();
-      });
-    });
-  }
-  capitalizeFirst(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-  }
-};
-
-// src/shadow-file-manager.ts
-var import_obsidian2 = require("obsidian");
-
-// src/types.ts
-var DEFAULT_SETTINGS = {
-  username: "",
-  defaultColor: "yellow",
-  showResolved: false
-};
-var COLOR_HEX = {
-  yellow: "#ffd700",
-  red: "#ff6b6b",
-  teal: "#4ecdc4",
-  blue: "#45b7d1",
-  green: "#96ceb4"
-};
-function generateId() {
-  return Math.random().toString(36).substring(2, 10);
-}
-
-// src/anchor.ts
-function findAnchorPosition(doc2, anchor, storedPosition) {
-  const { exact, prefix, suffix } = anchor;
-  if (!exact) return null;
-  if (storedPosition) {
-    const slice = doc2.substring(storedPosition.start, storedPosition.end);
-    if (slice === exact) {
-      return { from: storedPosition.start, to: storedPosition.end };
-    }
-  }
-  let searchStart = 0;
-  while (true) {
-    const idx = doc2.indexOf(exact, searchStart);
-    if (idx === -1) break;
-    const suffixOk = suffix ? contextMatches(
-      doc2.substring(idx + exact.length, idx + exact.length + suffix.length),
-      suffix,
-      0.5
-    ) : true;
-    if (prefix) {
-      const actualPrefix = doc2.substring(Math.max(0, idx - prefix.length), idx);
-      if (contextMatches(actualPrefix, prefix, 0.5) && suffixOk) {
-        return { from: idx, to: idx + exact.length };
-      }
-    } else if (suffixOk) {
-      return { from: idx, to: idx + exact.length };
-    }
-    searchStart = idx + 1;
-  }
-  return fuzzyFind(doc2, exact);
-}
-function contextMatches(actual, expected, threshold) {
-  if (!expected) return true;
-  const shorter = Math.min(actual.length, expected.length);
-  if (shorter === 0) return true;
-  const compare2 = actual.slice(-shorter);
-  let matches = 0;
-  for (let i = 0; i < shorter; i++) {
-    if (compare2[i] === expected[expected.length - shorter + i]) matches++;
-  }
-  return matches / shorter >= threshold;
-}
-function fuzzyFind(doc2, exact) {
-  if (exact.length < 4) return null;
-  const maxDist = Math.floor(exact.length * 0.2);
-  let best = null;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (let i = 0; i <= doc2.length - exact.length; i++) {
-    const slice = doc2.substring(i, i + exact.length);
-    const dist2 = levenshtein(slice, exact);
-    if (dist2 <= maxDist && dist2 < bestDist) {
-      bestDist = dist2;
-      best = { from: i, to: i + exact.length };
-      if (dist2 === 0) return best;
-    }
-  }
-  return best;
-}
-function levenshtein(a, b) {
-  const m = a.length;
-  const n = b.length;
-  const dp = Array.from(
-    { length: m + 1 },
-    (_, i) => Array.from({ length: n + 1 }, (_2, j) => i === 0 ? j : j === 0 ? i : 0)
-  );
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    }
-  }
-  return dp[m][n];
-}
-function extractAnchor(doc2, from, to) {
-  return {
-    exact: doc2.substring(from, to),
-    prefix: doc2.substring(Math.max(0, from - 32), from),
-    suffix: doc2.substring(to, Math.min(doc2.length, to + 32))
-  };
-}
-
-// src/shadow-file-manager.ts
-function migrateV1ToV2(data) {
-  const highlights = (data.highlights || []).map((h) => ({
-    id: h.id,
-    startLine: h.line,
-    endLine: h.line,
-    startOffset: h.startOffset,
-    endOffset: h.endOffset,
-    anchor: {
-      exact: h.text || "",
-      prefix: "",
-      suffix: ""
-    },
-    position: {
-      start: 0,
-      end: 0
-    },
-    text: h.text || "",
-    color: h.color,
-    createdAt: h.createdAt,
-    resolved: h.resolved || false
-  }));
-  return {
-    version: "2.0",
-    highlights,
-    comments: data.comments || []
-  };
-}
-var ShadowFileManager = class {
-  constructor(app) {
-    this.cache = /* @__PURE__ */ new Map();
-    this.app = app;
-  }
-  getShadowPath(file) {
-    const basePath = file.path;
-    return basePath.replace(/\.md$/, ".comments.json");
-  }
-  async readShadowFile(file) {
-    const shadowPath = this.getShadowPath(file);
-    if (this.cache.has(shadowPath)) {
-      return this.cache.get(shadowPath);
-    }
-    try {
-      const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
-      if (shadowFile instanceof import_obsidian2.TFile && shadowFile.extension === "json") {
-        const content = await this.app.vault.read(shadowFile);
-        const rawData = JSON.parse(content);
-        let data;
-        if (!rawData.version || rawData.version === "1.0") {
-          data = migrateV1ToV2(rawData);
-          await this.writeShadowFile(file, data);
-        } else {
-          data = rawData;
-        }
-        this.cache.set(shadowPath, data);
-        return data;
-      }
-    } catch (e) {
-    }
-    const empty = { version: "2.0", highlights: [], comments: [] };
-    this.cache.set(shadowPath, empty);
-    return empty;
-  }
-  async writeShadowFile(file, data) {
-    const shadowPath = this.getShadowPath(file);
-    const content = JSON.stringify(data, null, 2);
-    try {
-      const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
-      if (shadowFile instanceof import_obsidian2.TFile) {
-        await this.app.vault.modify(shadowFile, content);
-      } else {
-        await this.app.vault.create(shadowPath, content);
-      }
-      this.cache.set(shadowPath, data);
-    } catch (e) {
-      console.error("Failed to write shadow file:", e);
-    }
-  }
-  async createHighlight(file, highlightInput) {
-    const data = await this.readShadowFile(file);
-    const derivedAnchor = highlightInput.documentText && (!highlightInput.anchorPrefix || !highlightInput.anchorSuffix) ? extractAnchor(
-      highlightInput.documentText,
-      highlightInput.positionStart,
-      highlightInput.positionEnd
-    ) : null;
-    const highlight = {
-      id: generateId(),
-      startLine: highlightInput.startLine,
-      endLine: highlightInput.endLine,
-      startOffset: highlightInput.startOffset,
-      endOffset: highlightInput.endOffset,
-      anchor: {
-        exact: highlightInput.text,
-        prefix: highlightInput.anchorPrefix ?? derivedAnchor?.prefix ?? "",
-        suffix: highlightInput.anchorSuffix ?? derivedAnchor?.suffix ?? ""
-      },
-      position: {
-        start: highlightInput.positionStart,
-        end: highlightInput.positionEnd
-      },
-      text: highlightInput.text,
-      color: highlightInput.color,
-      createdAt: Date.now(),
-      resolved: false
-    };
-    data.highlights.push(highlight);
-    await this.writeShadowFile(file, data);
-    return highlight;
-  }
-  async updateHighlightColor(file, highlightId, color) {
-    const data = await this.readShadowFile(file);
-    const highlight = data.highlights.find((h) => h.id === highlightId);
-    if (highlight) {
-      highlight.color = color;
-      await this.writeShadowFile(file, data);
-    }
-  }
-  async deleteHighlight(file, highlightId) {
-    const data = await this.readShadowFile(file);
-    data.highlights = data.highlights.filter((h) => h.id !== highlightId);
-    data.comments = data.comments.filter((c) => c.highlightId !== highlightId);
-    await this.writeShadowFile(file, data);
-  }
-  async setHighlightResolved(file, highlightId, resolved) {
-    const data = await this.readShadowFile(file);
-    const highlight = data.highlights.find((h) => h.id === highlightId);
-    if (highlight) {
-      highlight.resolved = resolved;
-      await this.writeShadowFile(file, data);
-    }
-  }
-  async addComment(file, highlightId, user, content) {
-    const data = await this.readShadowFile(file);
-    const comment = {
-      id: generateId(),
-      highlightId,
-      user,
-      content,
-      createdAt: Date.now(),
-      editedAt: null,
-      replies: []
-    };
-    data.comments.push(comment);
-    await this.writeShadowFile(file, data);
-    return comment;
-  }
-  async editComment(file, commentId, content) {
-    const data = await this.readShadowFile(file);
-    const comment = data.comments.find((c) => c.id === commentId);
-    if (comment) {
-      comment.content = content;
-      comment.editedAt = Date.now();
-      await this.writeShadowFile(file, data);
-    }
-  }
-  async deleteComment(file, commentId) {
-    const data = await this.readShadowFile(file);
-    data.comments = data.comments.filter((c) => c.id !== commentId);
-    await this.writeShadowFile(file, data);
-  }
-  async addReply(file, commentId, user, content) {
-    const data = await this.readShadowFile(file);
-    const comment = data.comments.find((c) => c.id === commentId);
-    if (comment) {
-      const reply = {
-        id: generateId(),
-        user,
-        content,
-        createdAt: Date.now(),
-        editedAt: null
-      };
-      comment.replies.push(reply);
-      await this.writeShadowFile(file, data);
-      return reply;
-    }
-    return null;
-  }
-  async editReply(file, commentId, replyId, content) {
-    const data = await this.readShadowFile(file);
-    const comment = data.comments.find((c) => c.id === commentId);
-    if (comment) {
-      const reply = comment.replies.find((r) => r.id === replyId);
-      if (reply) {
-        reply.content = content;
-        reply.editedAt = Date.now();
-        await this.writeShadowFile(file, data);
-      }
-    }
-  }
-  async deleteReply(file, commentId, replyId) {
-    const data = await this.readShadowFile(file);
-    const comment = data.comments.find((c) => c.id === commentId);
-    if (comment) {
-      comment.replies = comment.replies.filter((r) => r.id !== replyId);
-      await this.writeShadowFile(file, data);
-    }
-  }
-  async getCommentsForHighlight(file, highlightId) {
-    const data = await this.readShadowFile(file);
-    return data.comments.filter((c) => c.highlightId === highlightId);
-  }
-  invalidateCache(filePath) {
-    this.cache.delete(filePath);
-  }
-  clearCache() {
-    this.cache.clear();
-  }
-};
-
-// src/highlight-renderer.ts
-var import_obsidian3 = require("obsidian");
-
 // node_modules/@marijn/find-cluster-break/src/index.js
 var rangeFrom = [];
 var rangeTo = [];
@@ -11882,6 +11528,390 @@ GutterMarker.prototype.mapMode = MapMode.TrackBefore;
 GutterMarker.prototype.startSide = GutterMarker.prototype.endSide = -1;
 GutterMarker.prototype.point = true;
 
+// src/settings.ts
+var import_obsidian = require("obsidian");
+var CommentsSettingsTab = class extends import_obsidian.PluginSettingTab {
+  constructor(app, plugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    const settings = this.plugin.settings;
+    new import_obsidian.Setting(containerEl).setName("Username").setDesc("Your name for comment attribution").addText(
+      (text) => text.setPlaceholder("Enter your name").setValue(settings.username).onChange(async (value) => {
+        settings.username = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Default highlight color").setDesc("Color for new highlights").addDropdown((dropdown) => {
+      const colors = ["yellow", "red", "teal", "blue", "green"];
+      colors.forEach((color) => {
+        dropdown.addOption(color, this.capitalizeFirst(color));
+      });
+      dropdown.setValue(settings.defaultColor);
+      dropdown.onChange(async (value) => {
+        settings.defaultColor = value;
+        await this.plugin.saveSettings();
+      });
+    });
+    new import_obsidian.Setting(containerEl).setName("Show resolved comments").setDesc("Display resolved comments in the sidebar").addToggle((toggle) => {
+      toggle.setValue(settings.showResolved);
+      toggle.onChange(async (value) => {
+        settings.showResolved = value;
+        await this.plugin.saveSettings();
+        this.plugin.refreshSidebar?.();
+      });
+    });
+  }
+  capitalizeFirst(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+};
+
+// src/shadow-file-manager.ts
+var import_obsidian2 = require("obsidian");
+
+// src/types.ts
+var DEFAULT_SETTINGS = {
+  username: "",
+  defaultColor: "yellow",
+  showResolved: false
+};
+var COLOR_HEX = {
+  yellow: "#ffd700",
+  red: "#ff6b6b",
+  teal: "#4ecdc4",
+  blue: "#45b7d1",
+  green: "#96ceb4"
+};
+function generateId() {
+  return Math.random().toString(36).substring(2, 10);
+}
+
+// src/anchor.ts
+function findAnchorPosition(doc2, anchor, storedPosition) {
+  const { exact, prefix, suffix } = anchor;
+  if (!exact) return null;
+  if (storedPosition) {
+    const slice = doc2.substring(storedPosition.start, storedPosition.end);
+    if (slice === exact) {
+      return { from: storedPosition.start, to: storedPosition.end };
+    }
+  }
+  let searchStart = 0;
+  while (true) {
+    const idx = doc2.indexOf(exact, searchStart);
+    if (idx === -1) break;
+    const suffixOk = suffix ? contextMatches(
+      doc2.substring(idx + exact.length, idx + exact.length + suffix.length),
+      suffix,
+      0.5
+    ) : true;
+    if (prefix) {
+      const actualPrefix = doc2.substring(Math.max(0, idx - prefix.length), idx);
+      if (contextMatches(actualPrefix, prefix, 0.5) && suffixOk) {
+        return { from: idx, to: idx + exact.length };
+      }
+    } else if (suffixOk) {
+      return { from: idx, to: idx + exact.length };
+    }
+    searchStart = idx + 1;
+  }
+  return fuzzyFind(doc2, exact);
+}
+function contextMatches(actual, expected, threshold) {
+  if (!expected) return true;
+  const shorter = Math.min(actual.length, expected.length);
+  if (shorter === 0) return true;
+  const compare2 = actual.slice(-shorter);
+  let matches = 0;
+  for (let i = 0; i < shorter; i++) {
+    if (compare2[i] === expected[expected.length - shorter + i]) matches++;
+  }
+  return matches / shorter >= threshold;
+}
+function fuzzyFind(doc2, exact) {
+  if (exact.length < 4) return null;
+  const maxDist = Math.floor(exact.length * 0.2);
+  let best = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i <= doc2.length - exact.length; i++) {
+    const slice = doc2.substring(i, i + exact.length);
+    const dist2 = levenshtein(slice, exact);
+    if (dist2 <= maxDist && dist2 < bestDist) {
+      bestDist = dist2;
+      best = { from: i, to: i + exact.length };
+      if (dist2 === 0) return best;
+    }
+  }
+  return best;
+}
+function levenshtein(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from(
+    { length: m + 1 },
+    (_, i) => Array.from({ length: n + 1 }, (_2, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+function extractAnchor(doc2, from, to) {
+  return {
+    exact: doc2.substring(from, to),
+    prefix: doc2.substring(Math.max(0, from - 32), from),
+    suffix: doc2.substring(to, Math.min(doc2.length, to + 32))
+  };
+}
+
+// src/shadow-file-manager.ts
+function migrateV1ToV2(data) {
+  const highlights = (data.highlights || []).map((h) => ({
+    id: h.id,
+    startLine: h.line,
+    endLine: h.line,
+    startOffset: h.startOffset,
+    endOffset: h.endOffset,
+    anchor: {
+      exact: h.text || "",
+      prefix: "",
+      suffix: ""
+    },
+    position: {
+      start: 0,
+      end: 0
+    },
+    text: h.text || "",
+    color: h.color,
+    createdAt: h.createdAt,
+    resolved: h.resolved || false
+  }));
+  return {
+    version: "2.0",
+    highlights,
+    comments: data.comments || []
+  };
+}
+var ShadowFileManager = class {
+  constructor(app) {
+    this.cache = /* @__PURE__ */ new Map();
+    this.app = app;
+  }
+  getShadowPath(file) {
+    const basePath = file.path;
+    return basePath.replace(/\.md$/, ".comments.json");
+  }
+  async readShadowFile(file) {
+    const shadowPath = this.getShadowPath(file);
+    if (this.cache.has(shadowPath)) {
+      return this.cache.get(shadowPath);
+    }
+    try {
+      const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
+      if (shadowFile instanceof import_obsidian2.TFile && shadowFile.extension === "json") {
+        const content = await this.app.vault.read(shadowFile);
+        let rawData;
+        try {
+          rawData = JSON.parse(content);
+        } catch (e) {
+          new import_obsidian2.Notice(`[Comments] Failed to parse ${shadowPath}. File may be corrupted.`);
+          console.error("[Comments] Failed to parse shadow file:", e);
+          const empty2 = { version: "2.0", highlights: [], comments: [] };
+          this.cache.set(shadowPath, empty2);
+          return empty2;
+        }
+        let data;
+        if (!rawData.version || rawData.version === "1.0") {
+          data = migrateV1ToV2(rawData);
+          await this.writeShadowFile(file, data);
+        } else {
+          data = rawData;
+        }
+        this.cache.set(shadowPath, data);
+        return data;
+      }
+    } catch (e) {
+    }
+    const empty = { version: "2.0", highlights: [], comments: [] };
+    this.cache.set(shadowPath, empty);
+    return empty;
+  }
+  async writeShadowFile(file, data) {
+    const shadowPath = this.getShadowPath(file);
+    const content = JSON.stringify(data, null, 2);
+    try {
+      const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
+      if (shadowFile instanceof import_obsidian2.TFile) {
+        await this.app.vault.modify(shadowFile, content);
+      } else {
+        await this.app.vault.create(shadowPath, content);
+      }
+      this.cache.set(shadowPath, data);
+    } catch (e) {
+      console.error("Failed to write shadow file:", e);
+    }
+  }
+  async createHighlight(file, highlightInput) {
+    const data = await this.readShadowFile(file);
+    const derivedAnchor = highlightInput.documentText && (!highlightInput.anchorPrefix || !highlightInput.anchorSuffix) ? extractAnchor(
+      highlightInput.documentText,
+      highlightInput.positionStart,
+      highlightInput.positionEnd
+    ) : null;
+    const highlight = {
+      id: generateId(),
+      startLine: highlightInput.startLine,
+      endLine: highlightInput.endLine,
+      startOffset: highlightInput.startOffset,
+      endOffset: highlightInput.endOffset,
+      anchor: {
+        exact: highlightInput.text,
+        prefix: highlightInput.anchorPrefix ?? derivedAnchor?.prefix ?? "",
+        suffix: highlightInput.anchorSuffix ?? derivedAnchor?.suffix ?? ""
+      },
+      position: {
+        start: highlightInput.positionStart,
+        end: highlightInput.positionEnd
+      },
+      text: highlightInput.text,
+      color: highlightInput.color,
+      createdAt: Date.now(),
+      resolved: false
+    };
+    data.highlights.push(highlight);
+    await this.writeShadowFile(file, data);
+    return highlight;
+  }
+  async updateHighlightColor(file, highlightId, color) {
+    const data = await this.readShadowFile(file);
+    const highlight = data.highlights.find((h) => h.id === highlightId);
+    if (highlight) {
+      highlight.color = color;
+      await this.writeShadowFile(file, data);
+    }
+  }
+  async deleteHighlight(file, highlightId) {
+    const data = await this.readShadowFile(file);
+    data.highlights = data.highlights.filter((h) => h.id !== highlightId);
+    data.comments = data.comments.filter((c) => c.highlightId !== highlightId);
+    await this.writeShadowFile(file, data);
+  }
+  async setHighlightResolved(file, highlightId, resolved) {
+    const data = await this.readShadowFile(file);
+    const highlight = data.highlights.find((h) => h.id === highlightId);
+    if (highlight) {
+      highlight.resolved = resolved;
+      await this.writeShadowFile(file, data);
+    }
+  }
+  async addComment(file, highlightId, user, content) {
+    const data = await this.readShadowFile(file);
+    const comment = {
+      id: generateId(),
+      highlightId,
+      user,
+      content,
+      createdAt: Date.now(),
+      editedAt: null,
+      replies: []
+    };
+    data.comments.push(comment);
+    await this.writeShadowFile(file, data);
+    return comment;
+  }
+  async editComment(file, commentId, content) {
+    const data = await this.readShadowFile(file);
+    const comment = data.comments.find((c) => c.id === commentId);
+    if (comment) {
+      comment.content = content;
+      comment.editedAt = Date.now();
+      await this.writeShadowFile(file, data);
+    }
+  }
+  async deleteComment(file, commentId) {
+    const data = await this.readShadowFile(file);
+    data.comments = data.comments.filter((c) => c.id !== commentId);
+    await this.writeShadowFile(file, data);
+  }
+  async addReply(file, commentId, user, content) {
+    const data = await this.readShadowFile(file);
+    const comment = data.comments.find((c) => c.id === commentId);
+    if (comment) {
+      const reply = {
+        id: generateId(),
+        user,
+        content,
+        createdAt: Date.now(),
+        editedAt: null
+      };
+      comment.replies.push(reply);
+      await this.writeShadowFile(file, data);
+      return reply;
+    }
+    return null;
+  }
+  async editReply(file, commentId, replyId, content) {
+    const data = await this.readShadowFile(file);
+    const comment = data.comments.find((c) => c.id === commentId);
+    if (comment) {
+      const reply = comment.replies.find((r) => r.id === replyId);
+      if (reply) {
+        reply.content = content;
+        reply.editedAt = Date.now();
+        await this.writeShadowFile(file, data);
+      }
+    }
+  }
+  async deleteReply(file, commentId, replyId) {
+    const data = await this.readShadowFile(file);
+    const comment = data.comments.find((c) => c.id === commentId);
+    if (comment) {
+      comment.replies = comment.replies.filter((r) => r.id !== replyId);
+      await this.writeShadowFile(file, data);
+    }
+  }
+  async getCommentsForHighlight(file, highlightId) {
+    const data = await this.readShadowFile(file);
+    return data.comments.filter((c) => c.highlightId === highlightId);
+  }
+  invalidateCache(filePath) {
+    this.cache.delete(filePath);
+  }
+  clearCache() {
+    this.cache.clear();
+  }
+  async renameShadowFile(oldNotePath, newNotePath) {
+    const oldShadowPath = oldNotePath.replace(/\.md$/, ".comments.json");
+    const newShadowPath = newNotePath.replace(/\.md$/, ".comments.json");
+    const oldFile = this.app.vault.getAbstractFileByPath(oldShadowPath);
+    if (oldFile instanceof import_obsidian2.TFile) {
+      await this.app.fileManager.renameFile(oldFile, newShadowPath);
+      const cached = this.cache.get(oldShadowPath);
+      if (cached) {
+        this.cache.delete(oldShadowPath);
+        this.cache.set(newShadowPath, cached);
+      }
+    }
+  }
+  async deleteShadowFile(notePath) {
+    const shadowPath = notePath.replace(/\.md$/, ".comments.json");
+    const shadowFile = this.app.vault.getAbstractFileByPath(shadowPath);
+    if (shadowFile instanceof import_obsidian2.TFile) {
+      await this.app.vault.delete(shadowFile);
+      this.cache.delete(shadowPath);
+    }
+  }
+};
+
+// src/highlight-renderer.ts
+var import_obsidian3 = require("obsidian");
+
 // src/cm6-highlight-field.ts
 var addHighlightEffect = StateEffect.define();
 var removeHighlightEffect = StateEffect.define();
@@ -12042,25 +12072,25 @@ var HighlightRenderer = class {
     const fromCursor = editor.getCursor?.("from");
     const toCursor = editor.getCursor?.("to");
     if (!fromCursor || !toCursor) return null;
-    const from = editor.posToOffset?.(fromCursor);
-    const to = editor.posToOffset?.(toCursor);
-    if (typeof from !== "number" || typeof to !== "number" || to <= from) return null;
-    const startLineStart = editor.posToOffset?.({ line: fromCursor.line, ch: 0 });
-    const endLineStart = editor.posToOffset?.({ line: toCursor.line, ch: 0 });
-    if (typeof startLineStart !== "number" || typeof endLineStart !== "number") return null;
-    const doc2 = editor.getValue?.() ?? "";
-    const contentOffset = this.getContentOffset(doc2);
-    const contentBody = doc2.slice(contentOffset);
-    const localStart = Math.max(0, from - contentOffset);
-    const localEnd = Math.max(localStart, to - contentOffset);
+    const { editorView } = ctx;
+    const fromLine = editorView.state.doc.line(fromCursor.line + 1);
+    const toLine = editorView.state.doc.line(toCursor.line + 1);
+    const fromOffset = fromLine.from + fromCursor.ch;
+    const toOffset = toLine.from + toCursor.ch;
+    if (toOffset <= fromOffset) return null;
+    const docText = editorView.state.doc.toString();
+    const contentOffset = this.getContentOffset(docText);
+    const contentBody = docText.slice(contentOffset);
+    const localStart = Math.max(0, fromOffset - contentOffset);
+    const localEnd = Math.max(localStart, toOffset - contentOffset);
     const anchor = extractAnchor(contentBody, localStart, localEnd);
     const highlight = await this.shadowManager.createHighlight(
       ctx.file,
       {
         startLine: fromCursor.line,
         endLine: toCursor.line,
-        startOffset: from - startLineStart,
-        endOffset: to - endLineStart,
+        startOffset: fromCursor.ch,
+        endOffset: toCursor.ch,
         text: selection,
         color,
         positionStart: localStart,
@@ -12070,11 +12100,11 @@ var HighlightRenderer = class {
         documentText: contentBody
       }
     );
-    if (ctx.editorView.state.field(highlightField, false)) {
-      ctx.editorView.dispatch({
+    if (editorView.state.field(highlightField, false)) {
+      editorView.dispatch({
         effects: addHighlightEffect.of({
-          from,
-          to,
+          from: fromOffset,
+          to: toOffset,
           id: highlight.id,
           color: highlight.color
         })
@@ -12155,7 +12185,11 @@ var CommentsSidebarView = class {
   renderHighlightItem(container, highlight, data, isResolved) {
     const comments = data.comments.filter((c) => c.highlightId === highlight.id);
     const item = container.createEl("div", {
-      cls: `highlight-item highlight-color-${highlight.color}${isResolved ? " resolved" : ""}`
+      cls: `highlight-item highlight-color-${highlight.color}${isResolved ? " resolved" : ""}`,
+      attr: {
+        "data-highlight-id": highlight.id,
+        "data-position-start": String(highlight.position?.start ?? 0)
+      }
     });
     const highlightText = item.createEl("div", { cls: "highlight-text" });
     const highlightLabel = highlightText.createEl("span", {
@@ -12394,6 +12428,16 @@ var CommentsSidebarView = class {
     });
     input.addEventListener("click", (e) => e.stopPropagation());
   }
+  scrollToHighlightInRange(from, to) {
+    const items = this.containerEl.querySelectorAll("[data-position-start]");
+    for (const item of items) {
+      const posStart = parseInt(item.dataset.positionStart || "0");
+      if (posStart >= from && posStart <= to) {
+        item.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        break;
+      }
+    }
+  }
   truncateText(text, maxLength) {
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + "...";
@@ -12441,7 +12485,35 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
       this.settings,
       this.contentEl,
       () => this.onRefresh(),
-      (highlight) => this.highlightRenderer.navigateToHighlight(highlight)
+      (highlight) => {
+        const mdView = this.app.workspace.getActiveViewOfType(import_obsidian4.MarkdownView);
+        if (mdView && highlight.position) {
+          const editor = mdView.editor;
+          const editorView = editor?.cm;
+          if (editorView) {
+            const docText = editorView.state.doc.toString();
+            let contentOffset = 0;
+            if (docText.startsWith("---\n")) {
+              const end = docText.indexOf("\n---\n", 4);
+              if (end !== -1) contentOffset = end + 5;
+            }
+            const absPos = contentOffset + highlight.position.start;
+            editorView.dispatch({
+              effects: EditorView.scrollIntoView(absPos, { y: "center" })
+            });
+            setTimeout(() => {
+              const marks = editorView.contentDOM.querySelectorAll(
+                `[data-highlight-id="${highlight.id}"]`
+              );
+              marks.forEach((el) => {
+                el.classList.add("obsidian-comments-highlight-pulse");
+                setTimeout(() => el.classList.remove("obsidian-comments-highlight-pulse"), 1e3);
+              });
+            }, 100);
+          }
+        }
+        this.highlightRenderer.navigateToHighlight(highlight);
+      }
     );
     this.contentEl.createEl("p", {
       text: "Open a note to see comments.",
@@ -12469,15 +12541,34 @@ var CommentsItemView = class extends import_obsidian4.ItemView {
       await this.sidebarView.refresh();
     }
   }
+  scrollToHighlightInRange(from, to) {
+    if (this.sidebarView) {
+      this.sidebarView.scrollToHighlightInRange(from, to);
+    }
+  }
 };
 
 // src/main.ts
 var CommentsPlugin = class extends import_obsidian5.Plugin {
+  constructor() {
+    super(...arguments);
+    this._cacheRefreshTimer = null;
+    this._scrollSyncTimer = null;
+  }
   async onload() {
     await this.loadSettings();
     this.shadowManager = new ShadowFileManager(this.app);
     this.highlightRenderer = new HighlightRenderer(this.app, this.shadowManager);
-    this.registerEditorExtension([highlightField]);
+    const plugin = this;
+    const scrollListener = EditorView.updateListener.of((update) => {
+      if (update.viewportChanged) {
+        if (plugin._scrollSyncTimer) clearTimeout(plugin._scrollSyncTimer);
+        plugin._scrollSyncTimer = setTimeout(() => {
+          plugin.syncSidebarToViewport(update.view);
+        }, 200);
+      }
+    });
+    this.registerEditorExtension([highlightField, scrollListener]);
     this.registerView(
       COMMENTS_VIEW_TYPE,
       (leaf) => new CommentsItemView(leaf, this.shadowManager, this.settings, this.highlightRenderer, () => this.refreshView())
@@ -12497,6 +12588,29 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
       }
     });
     this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file.path.endsWith(".comments.json")) {
+          this.shadowManager.invalidateCache(file.path);
+          if (this._cacheRefreshTimer) clearTimeout(this._cacheRefreshTimer);
+          this._cacheRefreshTimer = setTimeout(() => this.refreshView(), 500);
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", async (file, oldPath) => {
+        if (file.path.endsWith(".md")) {
+          await this.shadowManager.renameShadowFile(oldPath, file.path);
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", async (file) => {
+        if (file.path.endsWith(".md")) {
+          await this.shadowManager.deleteShadowFile(file.path);
+        }
+      })
+    );
+    this.registerEvent(
       this.app.workspace.on("active-leaf-change", async () => {
         const activeView = this.app.workspace.getActiveViewOfType(import_obsidian5.MarkdownView);
         if (activeView?.file) {
@@ -12512,6 +12626,22 @@ var CommentsPlugin = class extends import_obsidian5.Plugin {
         }
       })
     );
+  }
+  syncSidebarToViewport(editorView) {
+    const { from, to } = editorView.viewport;
+    const docText = editorView.state.doc.toString();
+    let contentOffset = 0;
+    if (docText.startsWith("---\n")) {
+      const end = docText.indexOf("\n---\n", 4);
+      if (end !== -1) contentOffset = end + 5;
+    }
+    const contentFrom = Math.max(0, from - contentOffset);
+    const contentTo = Math.max(0, to - contentOffset);
+    const leaves = this.app.workspace.getLeavesOfType(COMMENTS_VIEW_TYPE);
+    for (const leaf of leaves) {
+      const commentsView = leaf.view;
+      commentsView.scrollToHighlightInRange?.(contentFrom, contentTo);
+    }
   }
   async onunload() {
     this.app.workspace.detachLeavesOfType(COMMENTS_VIEW_TYPE);
