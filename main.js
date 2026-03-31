@@ -782,7 +782,7 @@ var CommentsSidebarView = class {
       text: `\u{1F464} ${comment.user} \xB7 ${this.formatTime(comment.createdAt)}`,
       cls: "comment-meta"
     });
-    const currentUser = this.settings.username?.trim() || "Anonymous";
+    const currentUser = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
     if (comment.user === currentUser) {
       const btnGroup = header.createEl("div", { cls: "comment-btn-group" });
       const editBtn = btnGroup.createEl("button", {
@@ -839,7 +839,7 @@ var CommentsSidebarView = class {
       text: `  \u2514\u2500 \u{1F464} ${reply.user} \xB7 ${this.formatTime(reply.createdAt)}`,
       cls: "reply-meta"
     });
-    const currentReplyUser = this.settings.username?.trim() || "Anonymous";
+    const currentReplyUser = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
     if (reply.user === currentReplyUser) {
       const btnGroup = header.createEl("div", { cls: "comment-btn-group" });
       const editBtn = btnGroup.createEl("button", {
@@ -886,7 +886,7 @@ var CommentsSidebarView = class {
     });
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        const user = this.settings.username?.trim() || "Anonymous";
+        const user = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
         try {
           await this.shadowManager.addComment(
             this.currentFile,
@@ -915,7 +915,7 @@ var CommentsSidebarView = class {
     input.focus();
     input.addEventListener("keydown", async (e) => {
       if (e.key === "Enter" && input.value.trim()) {
-        const user = this.settings.username?.trim() || "Anonymous";
+        const user = this.settings.username?.trim() || "User-" + Math.random().toString(36).substring(2, 6);
         try {
           await this.shadowManager.addReply(
             this.currentFile,
@@ -1261,6 +1261,10 @@ var CommentsPlugin = class extends import_obsidian6.Plugin {
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    if (!this.settings.username?.trim()) {
+      this.settings.username = "User-" + Math.random().toString(36).substring(2, 6);
+      await this.saveSettings();
+    }
   }
   async saveSettings() {
     await this.saveData(this.settings);

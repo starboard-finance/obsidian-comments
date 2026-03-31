@@ -130,6 +130,10 @@ export default class CommentsPlugin extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		if (!this.settings.username?.trim()) {
+			this.settings.username = 'User-' + Math.random().toString(36).substring(2, 6);
+			await this.saveSettings();
+		}
 	}
 
 	async saveSettings() {

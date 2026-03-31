@@ -234,7 +234,7 @@ export class CommentsSidebarView {
 		});
 
 		// Edit/Delete buttons (only for own comments)
-		const currentUser = this.settings.username?.trim() || 'Anonymous';
+		const currentUser = this.settings.username?.trim() || ('User-' + Math.random().toString(36).substring(2, 6));
 		if (comment.user === currentUser) {
 			const btnGroup = header.createEl('div', { cls: 'comment-btn-group' });
 
@@ -307,7 +307,7 @@ export class CommentsSidebarView {
 		});
 
 		// Edit/Delete buttons
-		const currentReplyUser = this.settings.username?.trim() || 'Anonymous';
+		const currentReplyUser = this.settings.username?.trim() || ('User-' + Math.random().toString(36).substring(2, 6));
 		if (reply.user === currentReplyUser) {
 			const btnGroup = header.createEl('div', { cls: 'comment-btn-group' });
 
@@ -360,7 +360,7 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				const user = this.settings.username?.trim() || 'Anonymous';
+				const user = this.settings.username?.trim() || ('User-' + Math.random().toString(36).substring(2, 6));
 				try {
 					await this.shadowManager.addComment(
 						this.currentFile!,
@@ -395,7 +395,7 @@ export class CommentsSidebarView {
 
 		input.addEventListener('keydown', async (e) => {
 			if (e.key === 'Enter' && input.value.trim()) {
-				const user = this.settings.username?.trim() || 'Anonymous';
+				const user = this.settings.username?.trim() || ('User-' + Math.random().toString(36).substring(2, 6));
 				try {
 					await this.shadowManager.addReply(
 						this.currentFile!,
